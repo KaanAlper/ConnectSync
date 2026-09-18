@@ -1,0 +1,10 @@
+import { Window, HorizontalBox } from "std-widgets.slint";
+export component App inherits Window {
+    width: 100px;
+    height: 100px;
+    HorizontalLayout {
+        spacing: 10px;
+        Rectangle { width: 10px; height: 10px; background: red; y: 10px; }
+        Rectangle { width: 10px; height: 10px; background: blue; y: 20px; }
+    }
+}

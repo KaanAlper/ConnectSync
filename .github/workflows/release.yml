@@ -1,0 +1,76 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: ConnectSync
+            asset_name: ConnectSync-Linux
+          - os: windows-latest
+            artifact_name: connect_sync.exe
+            asset_name: ConnectSync-Windows.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libfontconfig1-dev
+
+      - name: Set version (1.0.${{ github.run_number }})
+        id: ver
+        shell: bash
+        run: |
+          VERSION="1.0.${{ github.run_number }}"
+          # Cargo.toml içindeki version satırını güncelle
+          sed -i -e "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version bumped to $VERSION"
+
+      - name: Build Release
+        run: cargo build --release
+
+      - name: Rename and Move Artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          mv target/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
+
+      - name: Generate SHA256
+        shell: bash
+        run: |
+          cd dist
+          sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+
+      - name: Upload binaries to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: ConnectSync v1.0.${{ github.run_number }}
+          files: |
+            dist/${{ matrix.asset_name }}
+            dist/${{ matrix.asset_name }}.sha256
+          generate_release_notes: true
+          make_latest: "true"

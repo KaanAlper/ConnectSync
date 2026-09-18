@@ -1,0 +1,173 @@
+import { Button, VerticalBox, HorizontalBox, LineEdit, ScrollView } from "std-widgets.slint";
+export struct SyncFolderItem {
+    id: string,
+    name: string,
+    path: string,
+    code: string,
+    status: string,
+    is_syncing: bool,
+}
+
+
+export component DummyWindow inherits Window {
+    width: 0px;
+    height: 0px;
+}
+
+component IconButton inherits Rectangle {
+    in-out property <string> text: "";
+    in-out property <image> icon;
+    callback clicked;
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+    background: ta.pressed ? #45475a : (ta.has-hover ? #313244 : transparent);
+    
+    ta := TouchArea {
+        clicked => { root.clicked() }
+    }
+    if root.text != "": Text {
+        text: root.text;
+        color: white;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: 1.2rem;
+    }
+    if root.text == "": Image {
+        source: root.icon;
+        width: 16px;
+        height: 16px;
+        colorize: white;
+    }
+}
+
+component ModernButton inherits Rectangle {
+    in-out property <string> text;
+    in-out property <bool> enabled: true;
+    callback clicked;
+    height: 40px;
+    border-radius: 8px;
+    background: !root.enabled ? #313244 :
+        ta.pressed ? #89b4fa : (ta.has-hover ? #74c7ec : #89dceb);
+    
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked() }
+    }
+    Text {
+        text: root.text;
+        color: root.enabled ? #11111b : #6c7086;
+        font-weight: 700;
+        font-size: 1rem;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component SmoothSpinner inherits Rectangle {
+    width: 30px;
+    height: 30px;
+    property <angle> rot: 0deg;
+    
+    Timer {
+        interval: 16ms;
+        running: true;
+        triggered => { root.rot += 8deg; }
+    }
+    
+    Image {
+        width: 100%;
+        height: 100%;
+        source: @image-url("spinner.svg");
+        transform-rotation: root.rot;
+    }
+}
+
+// Sync kodu giriş dialogu
+component SyncCodeDialog inherits Rectangle {
+    in-out property <string> input_code: "";
+    callback confirmed(string);
+    callback cancelled();
+
+    background: #1e1e2e;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: #313244;
+    width: 380px;
+    height: 160px;
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+        alignment: center;
+
+        Text {
+            text: "Sync Kodunu Girin";
+            color: white;
+            font-size: 1rem;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        le := LineEdit {
+            placeholder-text: "XXXXXXXXXXXXXXXX";
+            text <=> root.input_code;
+            font-size: 1.1rem;
+            horizontal-alignment: center;
+            accepted => { root.confirmed(root.input_code) }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            ModernButton {
+                text: "İptal";
+                background: #313244;
+                clicked => { root.cancelled() }
+            }
+            ModernButton {
+                text: "Bağlan";
+                enabled: root.input_code.character-count > 4;
+                clicked => { root.confirmed(root.input_code) }
+            }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "ConnectSync";
+    width: 450px;
+    height: !root.is_logged_in ? 380px : (
+        root.show_connect_dialog ? 560px : (
+            root.sync_folders.length > 0 ? 600px : 450px
+        )
+    );
+    no-frame: true;
+    background: #1e1e2e;
+
+    animate height { duration: 300ms; easing: ease-in-out; }
+
+    // --- State properties ---
+    in-out property <bool> is_logged_in: false;
+    in-out property <bool> is_logging_in: false;
+    in-out property <bool> is_syncing: false;
+    in-out property <string> error_text: "";
+    in-out property <bool> show_connect_dialog: false;
+    in-out property <bool> show_quit_dialog: false;
+    in-out property <[SyncFolderItem]> sync_folders;
+    in-out property <[SyncFolderItem]> cloud_folders;
+    in-out property <string> active_sync_code: "";
+    in-out property <string> active_sync_folder: "";
+    in-out property <bool> show_my_syncs: false;
+    in-out property <string> copy_feedback_id: "";
+    in-out property <string> status_text: "";
+    in-out property <string> ui_status_text: "";
+
+    // --- Callbacks ---
+    callback login_requested();
+    callback scan_cloud_syncs();
+    callback logout_requested();
+    callback close_requested();
+    callback minimize_requested();
+    // "Yeni Sync": klasör seçimi Rust tarafında yapılır, sync kodu üretilir
+    callback create_new_sync();
+    // "Bağlan": sync kodu + klasör seçimi Rust tarafına iletilir

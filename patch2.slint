@@ -1,0 +1,127 @@
+            // ── Ana Ekran (Liste ve Butonlar) ──────────────────────────
+            if is_logged_in && !show_connect_dialog: VerticalLayout {
+                spacing: 12px;
+
+                // Üstteki İki Buton
+                VerticalLayout {
+                    spacing: 10px;
+                    ModernButton {
+                        text: "Yeni Bir Sync Klasörü Oluştur";
+                        clicked => { root.create_new_sync() }
+                    }
+                    ModernButton {
+                        text: "Bir Sync Koduna Bağlan";
+                        clicked => { root.show_connect_dialog = true; }
+                    }
+                }
+
+                // ScrollView İçinde Klasörler
+                if root.sync_folders.length > 0: ScrollView {
+                    width: 100%;
+                    VerticalLayout {
+                        spacing: 8px;
+                        padding-top: 5px;
+                        for folder in root.sync_folders : Rectangle {
+                            background: #313244;
+                            border-radius: 8px;
+                            height: 64px;
+                            HorizontalLayout {
+                                padding: 10px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    width: 180px;
+                                    Text { text: folder.name; font-size: 1.0rem; color: #cdd6f4; font-weight: 600; overflow: elide; }
+                                    Text { text: folder.path; font-size: 0.75rem; color: #a6adc8; overflow: elide; }
+                                    if folder.status != "": Text { text: folder.status; font-size: 0.7rem; color: folder.is_syncing ? #f9e2af : #a6adc8; overflow: elide; }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 8px;
+                                    if folder.is_syncing: SmoothSpinner { width: 16px; height: 16px; }
+                                    Text { text: folder.code; color: #a6e3a1; font-weight: 700; vertical-alignment: center; font-size: 1.1rem; }
+                                    
+                                    // Kopyalama Butonu
+                                    Rectangle {
+                                        width: 24px;
+                                        height: 24px;
+                                        border-radius: 4px;
+                                        background: ta_copy.pressed ? #45475a : (ta_copy.has-hover ? #585b70 : transparent);
+                                        Text { text: "📋"; vertical-alignment: center; horizontal-alignment: center; font-size: 0.9rem; }
+                                        ta_copy := TouchArea {
+                                            clicked => { root.copy_to_clipboard(folder.code) }
+                                        }
+                                    }
+
+                                    // Klasörü Aç Butonu
+                                    Rectangle {
+                                        width: 24px;
+                                        height: 24px;
+                                        border-radius: 4px;
+                                        background: ta_open.pressed ? #45475a : (ta_open.has-hover ? #585b70 : transparent);
+                                        Text { text: "📂"; vertical-alignment: center; horizontal-alignment: center; font-size: 0.9rem; }
+                                        ta_open := TouchArea {
+                                            clicked => { root.open_sync_folder(folder.id) }
+                                        }
+                                    }
+
+                                    // Manual Sync Butonu
+                                    Rectangle {
+                                        width: 24px;
+                                        height: 24px;
+                                        border-radius: 4px;
+                                        background: ta_sync.pressed ? #45475a : (ta_sync.has-hover ? #585b70 : transparent);
+                                        Text { text: "🔄"; vertical-alignment: center; horizontal-alignment: center; font-size: 0.9rem; }
+                                        ta_sync := TouchArea {
+                                            clicked => { root.manual_sync_requested(folder.id) }
+                                        }
+                                    }
+                                    
+                                    // Sil Butonu
+                                    Rectangle {
+                                        width: 24px;
+                                        height: 24px;
+                                        border-radius: 4px;
+                                        background: ta_del.pressed ? #f38ba8 : (ta_del.has-hover ? #eba0ac : transparent);
+                                        Text { text: "✖"; color: ta_del.has-hover ? white : #f38ba8; vertical-alignment: center; horizontal-alignment: center; font-size: 0.9rem; }
+                                        ta_del := TouchArea {
+                                            clicked => { root.stop_sync(folder.id) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: center;
+                    Text {
+                        text: "Çıkış Yap";
+                        color: #f38ba8;
+                        font-size: 0.9rem;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        ta_logout := TouchArea {
+                            clicked => { root.logout_requested() }
+                        }
+                    }
+                }
+            }
+
+            // ── Sync kodu giriş dialogu ──────────────────────────
+            if is_logged_in && show_connect_dialog: VerticalLayout {
+                alignment: center;
+                spacing: 10px;
+
+                SyncCodeDialog {
+                    confirmed(code) => {
+                        root.show_connect_dialog = false;
+                        root.connect_to_sync(code);
+                    }
+                    cancelled => {
+                        root.show_connect_dialog = false;
+                    }
+                }
+            }

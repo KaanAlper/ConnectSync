@@ -1,0 +1,50 @@
+[package]
+name = "connect_sync"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes-gcm = "0.11.1"
+argon2 = "0.6.0"
+auto-launch = "0.6.0"
+directories = "6.0.0"
+fastcdc = "5.0.0"
+getrandom = "0.4.3"
+hex = "0.4.3"
+hmac = "0.13.0"
+hkdf = "0.13.0"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+notify-debouncer-full = "0.7.0"
+reqwest = { version = "0.13.5", features = ["json"] }
+rfd = "0.17.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+slint = "1.18.0"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
+tray-icon = "0.25.1"
+urlencoding = "2.1.3"
+walkdir = "2.5.0"
+webbrowser = "1.2.4"
+yup-oauth2 = "12.1.2"
+async-trait = "0.1.92"
+bincode = "1.3.3"
+chrono = "0.4.45"
+arboard = "3.6.1"
+dirs = "7.0.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18.2"
+keyring = { version = "4.2.0", features = ["dbus-secret-service-keyring-store"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "4.2.0", features = ["windows-native-keyring-store"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "4.2.0", features = ["apple-native-keyring-store"] }
+
+[build-dependencies]
+slint-build = "1.18.0"
+
+[profile.dev.package."*"]
+opt-level = 3
