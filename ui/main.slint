@@ -316,11 +316,11 @@ export component MainWindow inherits Window {
                 alignment: end;
 
                 IconButton {
-                    text: "_";
+                    icon: @image-url("minimize.svg");
                     clicked => { root.minimize_requested() }
                 }
                 IconButton {
-                    text: "X";
+                    icon: @image-url("close.svg");
                     clicked => { root.show_quit_dialog = true; }
                 }
             }
