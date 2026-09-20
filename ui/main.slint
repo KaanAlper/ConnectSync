@@ -209,6 +209,7 @@ export component MainWindow inherits Window {
     in-out property <bool> show_connect_dialog: false;
     in-out property <bool> show_my_syncs: false;
     in-out property <bool> show_settings: false;
+    in-out property <bool> show_update_dialog: false;
     in-out property <string> active_sync_code: "";
     in-out property <string> active_sync_folder: "";
     in-out property <string> status_text: "Hazır";
@@ -246,7 +247,7 @@ export component MainWindow inherits Window {
                 spacing: 8px;
                 alignment: end;
                 IconButton {
-                    text: "⚙";
+                    icon: @image-url("settings.svg");
                     clicked => {
                         root.show_connect_dialog = false;
                         root.show_my_syncs = false;
@@ -772,7 +773,10 @@ export component MainWindow inherits Window {
             Text { text: "Sistem & Güncelleme"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
             DarkButton {
                 text: "Güncellemeleri Denetle";
-                clicked => { /* Check for updates */ }
+                clicked => { 
+                    // TEST: Popup'i gostermek icin
+                    root.show_update_dialog = true; 
+                }
             }
         }
 
@@ -798,6 +802,69 @@ export component MainWindow inherits Window {
                 clicked => {
                     // Aktif senkronizasyon klasorunun detayina git veya sync sayfasini ac
                     root.show_my_syncs = true;
+                }
+            }
+        }
+
+
+        // ── Update Ready Modal Dialog ─────────────────────────
+        if show_update_dialog: TouchArea {
+            width: 100%;
+            height: 100%;
+            
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: #11111b99; // Karartma (Overlay)
+            }
+            
+            Rectangle {
+                width: 320px;
+                height: 180px;
+                background: #1e1e2e;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #313244;
+                drop-shadow-blur: 15px;
+                drop-shadow-color: #00000080;
+                
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 16px;
+                    alignment: center;
+                    
+                    Text {
+                        text: "Güncelleme Hazır!";
+                        font-size: 1.2rem;
+                        color: #cdd6f4;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Arka planda yeni sürüm başarıyla indirildi. Uygulamak için ConnectSync'i yeniden başlatmak ister misiniz?";
+                        font-size: 0.9rem;
+                        color: #a6adc8;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: center;
+                        height: 40px;
+                        DarkButton {
+                            text: "Daha Sonra";
+                            width: 120px;
+                            clicked => { root.show_update_dialog = false; }
+                        }
+                        ModernButton {
+                            text: "Yeniden Başlat";
+                            width: 130px;
+                            clicked => { 
+                                // root.fully_quit_requested(); // Veya restart event'i
+                                root.show_update_dialog = false;
+                            }
+                        }
+                    }
                 }
             }
         }
