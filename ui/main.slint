@@ -272,6 +272,12 @@ export component MainWindow inherits Window {
     in-out property <string> status_text: "Hazır";
     in-out property <string> copy_feedback_id: "";
     in-out property <bool> show_quit_dialog: false;
+    in-out property <bool> show_delete_dialog: false;
+    in-out property <string> delete_target_id: "";
+    in-out property <bool> delete_from_cloud: false;
+    
+    callback confirm_delete_sync(string, bool);
+
 
     // --- Callbacks ---
     callback login_requested();
@@ -915,6 +921,66 @@ export component MainWindow inherits Window {
 
 
         // ── Update Ready Modal Dialog ─────────────────────────
+        
+        // ── Delete Sync Modal Dialog ─────────────────────────
+        if show_delete_dialog: TouchArea {
+            width: 100%;
+            height: 100%;
+            
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: #11111b99;
+            }
+            
+            Rectangle {
+                width: 320px;
+                height: 190px;
+                background: #1e1e2e;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: #313244;
+                drop-shadow-blur: 15px;
+                drop-shadow-color: #00000080;
+                
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 16px;
+                    alignment: center;
+                    
+                    Text { text: "Senkronizasyonu Kaldır"; font-size: 1.2rem; font-weight: 700; color: #cdd6f4; horizontal-alignment: center; }
+                    Text { text: "Bu klasörü listeden çıkarmak istiyor musunuz?"; font-size: 0.9rem; color: #a6adc8; horizontal-alignment: center; wrap: word-wrap; }
+                    
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 10px;
+                        Switch { checked <=> root.delete_from_cloud; }
+                        Text { text: "Drive'daki verileri de sil"; font-size: 0.85rem; color: #f38ba8; vertical-alignment: center; }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: center;
+                        
+                        Rectangle {
+                            width: 110px; height: 36px; border-radius: 18px; border-width: 1px; border-color: #585b70; background: transparent;
+                            Text { text: "İptal"; color: #cdd6f4; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { clicked => { root.show_delete_dialog = false; } }
+                        }
+                        
+                        Rectangle {
+                            width: 110px; height: 36px; border-radius: 18px; background: #f38ba8;
+                            Text { text: "Kaldır"; color: #11111b; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { clicked => { 
+                                root.confirm_delete_sync(root.delete_target_id, root.delete_from_cloud); 
+                                root.show_delete_dialog = false; 
+                            } }
+                        }
+                    }
+                }
+            }
+        }
+
         if show_update_dialog: TouchArea {
             width: 100%;
             height: 100%;
