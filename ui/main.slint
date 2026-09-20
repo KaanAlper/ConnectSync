@@ -279,14 +279,7 @@ export component MainWindow inherits Window {
             HorizontalLayout {
                 spacing: 8px;
                 alignment: end;
-                IconButton {
-                    icon: @image-url("settings.svg");
-                    clicked => {
-                        root.show_connect_dialog = false;
-                        root.show_my_syncs = false;
-                        root.show_settings = true;
-                    }
-                }
+
                 IconButton {
                     text: "_";
                     clicked => { root.minimize_requested() }
@@ -393,7 +386,7 @@ export component MainWindow inherits Window {
             // ── Ana Ekran (Menü)
             VerticalLayout {
                 width: parent.width; height: parent.height; alignment: center;
-                x: (is_logged_in && !show_connect_dialog && !show_my_syncs && active_sync_code == "") ? 0 : (show_connect_dialog || show_my_syncs || active_sync_code != "" ? -self.width : self.width);
+                x: (is_logged_in && !show_connect_dialog && !show_my_syncs && !show_settings && active_sync_code == "") ? 0 : (show_connect_dialog || show_my_syncs || active_sync_code != "" ? -self.width : self.width);
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
 
                 // --- Logo ---
@@ -919,6 +912,19 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+
+
+        // ── Floating Settings Button (Ana Ekranda Sağ Üst) ─────────────────────────
+        if (is_logged_in && !show_connect_dialog && !show_my_syncs && !show_settings && active_sync_code == ""): IconButton {
+            x: root.width - 45px;
+            y: 50px;
+            width: 32px;
+            height: 32px;
+            icon: @image-url("settings.svg");
+            clicked => {
+                root.show_settings = true;
             }
         }
 
