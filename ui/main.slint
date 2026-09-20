@@ -229,6 +229,29 @@ export component MainWindow inherits Window {
     no-frame: true;
     default-font-family: "Segoe UI";
 
+    forward-focus: fs;
+    fs := FocusScope {
+        width: 100%; height: 100%;
+        key-pressed(event) => {
+            if (event.text == "\u{001b}") {
+                if (root.show_settings) {
+                    root.show_settings = false;
+                    return accept;
+                }
+                if (root.show_my_syncs) {
+                    root.show_my_syncs = false;
+                    return accept;
+                }
+                if (root.show_connect_dialog) {
+                    root.show_connect_dialog = false;
+                    return accept;
+                }
+            }
+            return reject;
+        }
+    }
+
+
     in-out property <bool> is_logged_in: false;
     in-out property <bool> is_logging_in: false;
     in-out property <string> error_text: "";
@@ -773,12 +796,26 @@ export component MainWindow inherits Window {
             alignment: start;
             
             HorizontalLayout {
-                alignment: start;
-                IconButton {
-                    text: "←";
-                    clicked => { root.show_settings = false; }
+                height: 40px;
+                spacing: 10px;
+
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: @image-url("back.svg");
+                        clicked => { root.show_settings = false; }
+                    }
                 }
-                Text { text: "  Ayarlar"; font-size: 1.4rem; color: #cdd6f4; font-weight: 700; vertical-alignment: center; }
+
+                Text {
+                    text: "Ayarlar";
+                    color: white;
+                    font-size: 1.15rem;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
             }
             
             Rectangle { height: 1px; background: #313244; }
