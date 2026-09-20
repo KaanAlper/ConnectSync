@@ -245,6 +245,12 @@ export component MainWindow inherits Window {
                 spacing: 8px;
                 alignment: end;
                 IconButton {
+                    text: "⚙";
+                    clicked => {
+                        // root.show_settings = true;
+                    }
+                }
+                IconButton {
                     text: "_";
                     clicked => { root.minimize_requested() }
                 }
