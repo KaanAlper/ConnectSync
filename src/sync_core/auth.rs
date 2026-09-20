@@ -32,6 +32,11 @@ impl InstalledFlowDelegate for CustomBrowserDelegate {
     }
 }
 
+// Kapsam listesi değiştiği için (drive.appdata eklendi) eski token'lar geçersiz;
+// yeni bir anahtar adı kullanarak tek seferlik yeniden girişi zorluyoruz.
+const TOKEN_ENTRY: &str = "google_token_v2";
+const OLD_TOKEN_ENTRY: &str = "google_token";
+
 struct KeyringTokenStorage;
 
 #[async_trait]
@@ -40,7 +45,7 @@ impl TokenStorage for KeyringTokenStorage {
         let json = serde_json::to_string(&token).map_err(|e| {
             TokenStorageError::Other(std::borrow::Cow::Owned(format!("Serialization error: {}", e)))
         })?;
-        let entry = Entry::new("ConnectSync", "google_token")
+        let entry = Entry::new("ConnectSync", TOKEN_ENTRY)
             .map_err(|e| TokenStorageError::Other(std::borrow::Cow::Owned(format!("Keyring error: {}", e))))?;
         entry.set_password(&json).map_err(|e| {
             TokenStorageError::Other(std::borrow::Cow::Owned(format!("Keyring save error: {}", e)))
@@ -49,7 +54,7 @@ impl TokenStorage for KeyringTokenStorage {
     }
 
     async fn get(&self, _scopes: &[&str]) -> Option<TokenInfo> {
-        let entry = Entry::new("ConnectSync", "google_token").ok()?;
+        let entry = Entry::new("ConnectSync", TOKEN_ENTRY).ok()?;
         let json = entry.get_password().ok()?;
         serde_json::from_str(&json).ok()
     }
@@ -68,7 +73,12 @@ pub async fn get_drive_token(interactive: bool) -> Result<String, Box<dyn std::e
     .build()
     .await?;
 
-    let scopes = &["https://www.googleapis.com/auth/drive.file"];
+    // drive.file: uygulamanın oluşturduğu klasör/dosyalar
+    // drive.appdata: appDataFolder'daki anahtar kaydı (connectsync_keys.json) — diğer PC'lerde sync'leri bulmak için şart
+    let scopes = &[
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.appdata",
+    ];
     
     // yup_oauth2 caches in memory and keyring transparently
     let token = tokio::time::timeout(std::time::Duration::from_secs(120), auth.token(scopes))
@@ -80,7 +90,7 @@ pub async fn get_drive_token(interactive: bool) -> Result<String, Box<dyn std::e
 }
 
 pub fn is_token_cached() -> bool {
-    if let Ok(entry) = Entry::new("ConnectSync", "google_token") {
+    if let Ok(entry) = Entry::new("ConnectSync", TOKEN_ENTRY) {
         entry.get_password().is_ok()
     } else {
         false
@@ -88,8 +98,11 @@ pub fn is_token_cached() -> bool {
 }
 
 pub fn logout() {
-    if let Ok(entry) = Entry::new("ConnectSync", "google_token") {
+    if let Ok(entry) = Entry::new("ConnectSync", TOKEN_ENTRY) {
         let _ = entry.delete_credential(); // V1 credential deletion method
+    }
+    if let Ok(entry) = Entry::new("ConnectSync", OLD_TOKEN_ENTRY) {
+        let _ = entry.delete_credential();
     }
     
     if let Ok(entry) = Entry::new("ConnectSync", "sync_code") {

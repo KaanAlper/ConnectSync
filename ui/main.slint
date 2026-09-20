@@ -268,6 +268,9 @@ export component MainWindow inherits Window {
     in-out property <string> setting_language: "Türkçe (TR)";
     in-out property <bool> show_update_dialog: false;
     in-out property <string> active_sync_code: "";
+    // Aktif sync ekranı "Ana Menü" ile gizlendiğinde true olur (sync arka planda sürer, kod kaybolmaz)
+    in-out property <bool> active_hidden: false;
+    property <bool> active_screen_open: active_sync_code != "" && !active_hidden;
     in-out property <string> active_sync_folder: "";
     in-out property <string> status_text: "Hazır";
     in-out property <string> copy_feedback_id: "";
@@ -297,7 +300,29 @@ export component MainWindow inherits Window {
     callback autostart_toggled(bool);
     callback start_in_tray_toggled(bool);
     callback language_changed(string);
+    callback move_window(length /*dx*/, length /*dy*/);
 
+
+    // ── Pencere sürükleme (frameless pencere için) ─────────────────────────
+    // En altta durur; buton/metin/dialog gibi üstündeki öğeler tıklamayı kendisi yakalar,
+    // geri kalan her boş alandan pencere sürüklenebilir.
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        property <length> press-x;
+        property <length> press-y;
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                self.press-x = self.mouse-x;
+                self.press-y = self.mouse-y;
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.move_window(self.mouse-x - self.press-x, self.mouse-y - self.press-y);
+            }
+        }
+    }
 
     VerticalLayout {
         padding: 15px;
@@ -305,11 +330,9 @@ export component MainWindow inherits Window {
         // ── Custom Titlebar ──────────────────────────────────────
         HorizontalLayout {
             height: 30px;
-            alignment: space-between;
 
-            TouchArea {
-                width: parent.width - 70px;
-            }
+            // Boş başlık alanı (eskiden burada içi boş bir TouchArea vardı, sürüklemeyi engelliyordu)
+            Rectangle { horizontal-stretch: 1; }
 
             HorizontalLayout {
                 spacing: 8px;
@@ -421,7 +444,7 @@ export component MainWindow inherits Window {
             // ── Ana Ekran (Menü)
             VerticalLayout {
                 width: parent.width; height: parent.height; alignment: center;
-                x: (is_logged_in && !show_connect_dialog && !show_my_syncs && !show_settings && active_sync_code == "") ? 0 : (show_connect_dialog || show_my_syncs || active_sync_code != "" ? -self.width : self.width);
+                x: (is_logged_in && !show_connect_dialog && !show_my_syncs && !show_settings && !active_screen_open) ? 0 : (show_connect_dialog || show_my_syncs || active_screen_open ? -self.width : self.width);
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
 
                 // --- Logo ---
@@ -462,7 +485,7 @@ export component MainWindow inherits Window {
 
                         ModernButton {
                             text: "Senkronizasyonlarım";
-                            clicked => { root.show_my_syncs = true; }
+                            clicked => { root.show_my_syncs = true; root.scan_cloud_syncs(); }
                         }
                     }
                 }
@@ -471,7 +494,7 @@ export component MainWindow inherits Window {
             // ── Aktif Sync Ekranı
             VerticalLayout {
                 width: parent.width; height: parent.height; alignment: center;
-                x: (is_logged_in && active_sync_code != "") ? 0 : self.width;
+                x: (is_logged_in && active_screen_open) ? 0 : self.width;
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
 
                 spacing: 20px;
@@ -521,8 +544,8 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     spacing: 15px;
                     alignment: center;
-                    ModernButton { text: "Ana Menü"; width: 120px; clicked => { root.active_sync_code = ""; } }
-                    ModernButton { text: "Durdur & Sil"; width: 120px; clicked => { root.stop_sync(root.active_sync_code); root.active_sync_code = ""; } }
+                    ModernButton { text: "Ana Menü"; width: 120px; clicked => { root.active_hidden = true; } }
+                    ModernButton { text: "Durdur & Sil"; width: 120px; clicked => { root.stop_sync(root.active_sync_code); root.active_sync_code = ""; root.active_hidden = false; } }
                 }
             }
 
@@ -587,67 +610,78 @@ export component MainWindow inherits Window {
 
                 if root.sync_folders.length > 0: ScrollView {
                     width: 100%;
+                    viewport-width: self.width;
                     VerticalLayout {
                         spacing: 8px;
-                        for folder in root.sync_folders : Rectangle {
-                            background: #313244;
-                            border-radius: 8px;
-                            height: 64px;
+                        for folder in root.sync_folders : HorizontalLayout {
+                            padding-left: 20px;
+                            padding-right: 20px;
+                            Rectangle {
+                                background: #313244;
+                                border-radius: 8px;
+                                height: 64px;
 
-                            ta_folder := TouchArea {
-                                clicked => {
-                                    root.active_sync_code = folder.id;
-                                    root.active_sync_folder = folder.name;
-                                    root.show_my_syncs = false;
-                                }
-                            }
-
-                            HorizontalLayout {
-                                padding: 10px;
-                                spacing: 10px;
-                                VerticalLayout {
-                                    alignment: center;
-                                    width: 180px;
-                                    Text { text: folder.name; font-size: 1.0rem; color: #cdd6f4; font-weight: 600; overflow: elide; }
-                                    Text { text: folder.path; font-size: 0.75rem; color: #a6adc8; overflow: elide; }
-                                    if folder.status != "": Text { text: folder.status; font-size: 0.7rem; color: folder.is_syncing ? #f9e2af : #a6adc8; overflow: elide; }
-                                }
-                                Rectangle { horizontal-stretch: 1; }
                                 HorizontalLayout {
-                                    alignment: center;
-                                    spacing: 8px;
-                                    if folder.is_syncing: SmoothSpinner { width: 16px; height: 16px; }
-
+                                    padding: 10px;
+                                    spacing: 10px;
                                     VerticalLayout {
                                         alignment: center;
+                                        horizontal-stretch: 1;
+                                        min-width: 0px;
+                                        Text { text: folder.name; font-size: 1.0rem; color: #cdd6f4; font-weight: 600; overflow: elide; }
+                                        Text { text: folder.path; font-size: 0.75rem; color: #a6adc8; overflow: elide; }
+                                        if folder.status != "": Text { text: folder.status; font-size: 0.7rem; color: folder.is_syncing ? #f9e2af : #a6adc8; overflow: elide; }
+                                    }
+                                    HorizontalLayout {
+                                        alignment: center;
+                                        spacing: 8px;
+                                        if folder.is_syncing: SmoothSpinner { width: 16px; height: 16px; }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Rectangle {
+                                                width: 32px;
+                                                height: 32px;
+                                                border-radius: 4px;
+                                                background: ta_copy.pressed ? #a6e3a1 : (ta_copy.has-hover ? #b4befe : transparent);
+                                                Image { source: @image-url("emojis/copy.svg"); width: 16px; height: 16px; colorize: ta_copy.has-hover ? #11111b : #cdd6f4; }
+                                                ta_copy := TouchArea {
+                                                    clicked => { root.copy_to_clipboard(folder.code, folder.id) }
+                                                }
+                                            }
+                                            Text {
+                                                text: "Kopyalandı!";
+                                                color: #a6e3a1;
+                                                font-size: 0.6rem;
+                                                horizontal-alignment: center;
+                                                opacity: root.copy_feedback_id == folder.id ? 1.0 : 0.0;
+                                                animate opacity { duration: 250ms; }
+                                            }
+                                        }
+
                                         Rectangle {
                                             width: 32px;
                                             height: 32px;
                                             border-radius: 4px;
-                                            background: ta_copy.pressed ? #a6e3a1 : (ta_copy.has-hover ? #b4befe : transparent);
-                                            Image { source: @image-url("emojis/copy.svg"); width: 16px; height: 16px; colorize: ta_copy.has-hover ? #11111b : #cdd6f4; }
-                                            ta_copy := TouchArea {
-                                                clicked => { root.copy_to_clipboard(folder.code, folder.id) }
+                                            background: ta_refresh.pressed ? #a6e3a1 : (ta_refresh.has-hover ? #b4befe : transparent);
+                                            Image { source: @image-url("emojis/refresh.svg"); width: 16px; height: 16px; colorize: ta_refresh.has-hover ? #11111b : #cdd6f4; }
+                                            ta_refresh := TouchArea {
+                                                clicked => { root.manual_sync_requested(folder.id) }
                                             }
                                         }
-                                        Text {
-                                            text: "Kopyalandı!";
-                                            color: #a6e3a1;
-                                            font-size: 0.6rem;
-                                            horizontal-alignment: center;
-                                            opacity: root.copy_feedback_id == folder.id ? 1.0 : 0.0;
-                                            animate opacity { duration: 250ms; }
-                                        }
-                                    }
 
-                                    Rectangle {
-                                        width: 32px;
-                                        height: 32px;
-                                        border-radius: 4px;
-                                        background: ta_remove.pressed ? #f38ba8 : (ta_remove.has-hover ? #eba0ac : transparent);
-                                        Image { source: @image-url("emojis/trash.svg"); width: 16px; height: 16px; colorize: ta_remove.has-hover ? #11111b : #f38ba8; }
-                                        ta_remove := TouchArea {
-                                            clicked => { root.stop_sync(folder.id) }
+                                        Rectangle {
+                                            width: 32px;
+                                            height: 32px;
+                                            border-radius: 4px;
+                                            background: ta_remove.pressed ? #f38ba8 : (ta_remove.has-hover ? #eba0ac : transparent);
+                                            Image { source: @image-url("emojis/trash.svg"); width: 16px; height: 16px; colorize: ta_remove.has-hover ? #11111b : #f38ba8; }
+                                            ta_remove := TouchArea {
+                                                clicked => { 
+                                                    root.delete_target_id = folder.id;
+                                                    root.show_delete_dialog = true; 
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -831,69 +865,90 @@ export component MainWindow inherits Window {
             
             Rectangle { height: 1px; background: #313244; }
 
-            
-            Text { text: "Başlangıç"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
-            HorizontalLayout {
-                Text { text: "Bilgisayar açıldığında otomatik başlat"; color: #cdd6f4; vertical-alignment: center; }
-                Rectangle { width: 10px; }
-                Switch { 
-                    checked <=> root.setting_autostart;
-                    toggled => { root.autostart_toggled(root.setting_autostart); } 
-                }
-            }
-            HorizontalLayout {
-                opacity: root.setting_autostart ? 1.0 : 0.5;
-                Text { text: "Arka planda (Sistem tepsisinde) başlat"; color: #a6adc8; vertical-alignment: center; }
-                Rectangle { width: 10px; }
-                Switch { 
-                    enabled: root.setting_autostart;
-                    checked <=> root.setting_start_in_tray;
-                    toggled => { root.start_in_tray_toggled(root.setting_start_in_tray); } 
-                }
-            }
-            Rectangle { height: 10px; }
-
-            Text { text: "Performans"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
-            HorizontalLayout {
-                Text { text: "İndirme Parça Sayısı (Concurrent Threads):"; color: #a6adc8; vertical-alignment: center; }
-                Rectangle { width: 10px; }
-                LineEdit { text: "4"; width: 60px; }
-            }
-            Text { 
-                text: "Yüksek parça sayısı indirmeyi hızlandırır ancak işlemci kullanımını artırır."; 
-                color: #6c7086; font-size: 0.8rem; 
-            }
-
-            Rectangle { height: 20px; }
-
-            
-            HorizontalLayout {
-                Text { text: "Uygulama Dili (Language)"; color: #a6adc8; vertical-alignment: center; }
-                Rectangle { width: 10px; }
-                Rectangle {
-                    width: 100px; height: 30px; border-radius: 8px; background: #313244;
-                    Text { text: "Türkçe (TR)"; color: #cdd6f4; horizontal-alignment: center; vertical-alignment: center; font-size: 0.9rem; }
-                    TouchArea {
-                        clicked => {
-                            root.language_changed("en");
+            ScrollView {
+                width: 100%;
+                height: 100%;
+                VerticalLayout {
+                    spacing: 16px;
+                    alignment: start;
+                    padding-bottom: 20px;
+                    
+                    Text { text: "Başlangıç"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+                    HorizontalLayout {
+                        Text { text: "Bilgisayar açıldığında otomatik başlat"; color: #cdd6f4; vertical-alignment: center; }
+                        Rectangle { width: 10px; }
+                        Switch { 
+                            checked <=> root.setting_autostart;
+                            toggled => { root.autostart_toggled(root.setting_autostart); } 
                         }
                     }
-                }
-            }
+                    HorizontalLayout {
+                        opacity: root.setting_autostart ? 1.0 : 0.5;
+                        Text { text: "Arka planda (Sistem tepsisinde) başlat"; color: #a6adc8; vertical-alignment: center; }
+                        Rectangle { width: 10px; }
+                        Switch { 
+                            enabled: root.setting_autostart;
+                            checked <=> root.setting_start_in_tray;
+                            toggled => { root.start_in_tray_toggled(root.setting_start_in_tray); } 
+                        }
+                    }
+                    Rectangle { height: 10px; }
 
-            Rectangle { height: 5px; }
-            Text { text: "Sistem & Güncelleme"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
-            DarkButton {
-                text: "Güncellemeleri Denetle";
-                clicked => { 
-                    // TEST: Popup'i gostermek icin
-                    root.show_update_dialog = true; 
+                    Text { text: "Performans"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+                    HorizontalLayout {
+                        Text { text: "İndirme Parça Sayısı (Concurrent Threads):"; color: #a6adc8; vertical-alignment: center; }
+                        Rectangle { width: 10px; }
+                        LineEdit { text: "4"; width: 60px; }
+                    }
+                    Text { 
+                        text: "Yüksek parça sayısı indirmeyi hızlandırır ancak işlemci kullanımını artırır."; 
+                        color: #6c7086; font-size: 0.8rem; 
+                    }
+
+                    Rectangle { height: 20px; }
+
+                    HorizontalLayout {
+                        Text { text: "Uygulama Dili (Language)"; color: #a6adc8; vertical-alignment: center; }
+                        Rectangle { width: 10px; }
+                        ComboBox {
+                            width: 120px;
+                            height: 30px;
+                            model: ["Türkçe", "English", "Deutsch", "Español", "Français", "中文", "한국어", "日本語"];
+                            current-value: root.setting_language == "en" ? "English" : 
+                                        root.setting_language == "de" ? "Deutsch" : 
+                                        root.setting_language == "es" ? "Español" : 
+                                        root.setting_language == "fr" ? "Français" : 
+                                        root.setting_language == "zh" ? "中文" : 
+                                        root.setting_language == "ko" ? "한국어" : 
+                                        root.setting_language == "ja" ? "日本語" : "Türkçe";
+                            selected(val) => {
+                                if (val == "English") { root.language_changed("en"); }
+                                else if (val == "Deutsch") { root.language_changed("de"); }
+                                else if (val == "Español") { root.language_changed("es"); }
+                                else if (val == "Français") { root.language_changed("fr"); }
+                                else if (val == "中文") { root.language_changed("zh"); }
+                                else if (val == "한국어") { root.language_changed("ko"); }
+                                else if (val == "日本語") { root.language_changed("ja"); }
+                                else { root.language_changed("tr"); }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 5px; }
+                    Text { text: "Sistem & Güncelleme"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+                    DarkButton {
+                        text: "Güncellemeleri Denetle";
+                        clicked => { 
+                            // TEST: Popup'i gostermek icin
+                            root.show_update_dialog = true; 
+                        }
+                    }
                 }
             }
         }
 
         // ── Active Sync Mini Drawer (Right edge) ─────────────────────────
-        if (is_syncing && !show_my_syncs && active_sync_folder != ""): Rectangle {
+        if (is_syncing && active_hidden && active_sync_code != "" && !show_my_syncs && !show_connect_dialog && !show_settings): Rectangle {
             x: root.width - self.width;
             y: root.height / 2 - self.height / 2;
             width: 48px;
@@ -912,8 +967,8 @@ export component MainWindow inherits Window {
 
             ta_mini := TouchArea {
                 clicked => {
-                    // Aktif senkronizasyon klasorunun detayina git veya sync sayfasini ac
-                    root.show_my_syncs = true;
+                    // Sadece aktif sync ekranını geri getir
+                    root.active_hidden = false;
                 }
             }
         }
@@ -1043,7 +1098,7 @@ export component MainWindow inherits Window {
 
 
         // ── Floating Settings Button (Ana Ekranda Sağ Üst) ─────────────────────────
-        if (is_logged_in && !show_connect_dialog && !show_my_syncs && !show_settings && active_sync_code == ""): IconButton {
+        if (is_logged_in && !show_connect_dialog && !show_my_syncs && !show_settings && !active_screen_open): IconButton {
             x: root.width - 45px;
             y: 50px;
             width: 32px;

@@ -206,55 +206,33 @@ fn setup_ui(
     ui.on_scan_cloud_syncs(move || {
         let ui_weak_bg = ui_weak_scan.clone();
         let app_state_bg = app_state_scan.clone();
-        
+
         if let Some(ui) = ui_weak_bg.upgrade() {
-            ui.set_status_text("Drive taranıyor...".into());
+            // Aktif bir sync varsa onun durum metnini ezme
+            if !ui.get_is_syncing() {
+                ui.set_status_text("Drive taranıyor...".into());
+            }
         }
 
         tokio::spawn(async move {
-            match sync_core::auth::get_drive_token(true).await {
-                Ok(token) => {
-                    let drive = sync_core::drive::DriveClient::new(token, None).unwrap();
-                    if let Ok(cloud_folders) = drive.list_cloud_folders().await {
-                        if let Ok(keys) = drive.get_sync_keys().await {
-                            let mut config = sync_core::config::AppConfig::load();
-                            let mut added = 0;
-                            for (fid, name) in cloud_folders {
-                                if let Some(hex_key) = keys.get(&fid) {
-                                    let code = format!("cs-{}-{}", fid, hex_key);
-                                    if !config.sync_folders.iter().any(|f| f.id == code) {
-                                        config.sync_folders.push(sync_core::config::SyncFolder {
-                                            id: code.clone(),
-                                            name: name.replace("ConnectSync_", ""),
-                                            path: dirs::download_dir()
-    .unwrap_or_else(|| std::path::PathBuf::from("."))
-    .join("ConnectSync")
-    .join(name.replace("ConnectSync_", ""))
-    .to_string_lossy()
-    .to_string(),
-                                            code: code.clone(),
-                                        });
-                                        added += 1;
-                                    }
+            let result = scan_cloud_into_config().await;
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui_weak_bg.upgrade() {
+                    update_ui_folders(&ui, &app_state_bg);
+                    match result {
+                        Ok(added) => {
+                            if !ui.get_is_syncing() {
+                                if added > 0 {
+                                    ui.set_status_text(format!("{} senkronizasyon bulundu!", added).as_str().into());
+                                } else {
+                                    ui.set_status_text("Yeni senkronizasyon bulunamadı.".into());
                                 }
                             }
-                            let _ = config.save();
-                            
-                            let _ = slint::invoke_from_event_loop(move || {
-                                if let Some(ui) = ui_weak_bg.upgrade() {
-                                    update_ui_folders(&ui, &app_state_bg);
-                                    if added > 0 {
-                                        ui.set_status_text(format!("{} senkronizasyon bulundu!", added).as_str().into());
-                                    } else {
-                                        ui.set_status_text("Yeni senkronizasyon bulunamadı.".into());
-                                    }
-                                }
-                            });
                         }
+                        Err(e) => ui.set_error_text(e.as_str().into()),
                     }
-                },
-                Err(_) => {}
-            }
+                }
+            });
         });
     });
 
@@ -275,13 +253,39 @@ fn setup_ui(
         }
     });
 
-    ui.on_manual_sync_requested(move |_id| {
+    let ui_weak_manual = ui.as_weak();
+    let app_state_manual = app_state.clone();
+    ui.on_manual_sync_requested(move |id| {
+        let config = sync_core::config::AppConfig::load();
+        if let Some(f) = config.sync_folders.iter().find(|f| f.id == id.as_str()) {
+            let code = if f.code.is_empty() { f.id.clone() } else { f.code.clone() };
+            start_sync_loop(
+                ui_weak_manual.clone(),
+                app_state_manual.clone(),
+                code,
+                PathBuf::from(&f.path),
+            );
+        }
     });
 
     ui.on_open_sync_folder(move |_id| {
         let config = sync_core::config::AppConfig::load();
         if let Some(f) = config.sync_folders.first() { let path = &f.path;
             let _ = webbrowser::open(&path);
+        }
+    });
+
+    // ── Pencere sürükleme (no-frame pencere) ──────────────────────────────
+    let ui_weak_move = ui.as_weak();
+    ui.on_move_window(move |dx, dy| {
+        if let Some(ui) = ui_weak_move.upgrade() {
+            let w = ui.window();
+            let scale = w.scale_factor();
+            let pos = w.position();
+            w.set_position(slint::PhysicalPosition::new(
+                pos.x + (dx * scale).round() as i32,
+                pos.y + (dy * scale).round() as i32,
+            ));
         }
     });
 
@@ -301,6 +305,7 @@ fn setup_ui(
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_is_logged_in(false);
             ui.set_active_sync_code("".into());
+            ui.set_active_hidden(false);
             ui.set_active_sync_folder("".into());
             ui.set_status_text("".into());
             ui.set_error_text("".into());
@@ -343,6 +348,7 @@ fn setup_ui(
         // Let's just enter Active View with "Bekleniyor..."
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_active_sync_code("pending".into()); // Geçici - kopyala butonu gizlenecek
+            ui.set_active_hidden(false);
             ui.set_active_sync_folder(folder_name.as_str().into());
             ui.set_status_text("Drive klasörü oluşturuluyor...".into());
             ui.set_is_syncing(true);
@@ -390,6 +396,7 @@ fn setup_ui(
                                 if let Some(ui) = ui_weak_bg.upgrade() {
                                     ui.set_error_text(msg.as_str().into());
                                     ui.set_active_sync_code("".into());
+                                    ui.set_active_hidden(false);
                                     ui.set_is_syncing(false);
                                 }
                             });
@@ -401,6 +408,7 @@ fn setup_ui(
                         if let Some(ui) = ui_weak_bg.upgrade() {
                             ui.set_error_text("Google Drive girişi yapılamadı.".into());
                             ui.set_active_sync_code("".into());
+                            ui.set_active_hidden(false);
                             ui.set_is_syncing(false);
                         }
                     });
@@ -448,6 +456,7 @@ fn setup_ui(
 
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_active_sync_code(sync_code.clone().as_str().into());
+            ui.set_active_hidden(false);
             ui.set_active_sync_folder(folder_name.as_str().into());
             // ui.set_error_text("".into()); // Hata varsa silmemesi için yoruma alıyoruz
             ui.set_status_text("Bağlanıyor ve sync başlatılıyor...".into());
@@ -473,6 +482,7 @@ fn setup_ui(
 
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_active_sync_code("".into());
+            ui.set_active_hidden(false);
             ui.set_active_sync_folder("".into());
             ui.set_status_text("".into());
             ui.set_is_syncing(false);
@@ -950,3 +960,62 @@ async fn fetch_cloud_folders(ui_weak: slint::Weak<crate::MainWindow>) {
     }
 }
 
+/// Drive'daki ConnectSync klasörlerini + appDataFolder'daki anahtar kaydını okuyup
+/// bu PC'nin config'ine ekler. Eklenen sync sayısını döndürür.
+async fn scan_cloud_into_config() -> Result<usize, String> {
+    let token = sync_core::auth::get_drive_token(false)
+        .await
+        .map_err(|e| format!("Drive girişi gerekli: {e}"))?;
+    let drive = sync_core::drive::DriveClient::new(token, None).map_err(|e| e.to_string())?;
+
+    let cloud_folders = drive
+        .list_cloud_folders()
+        .await
+        .map_err(|e| format!("Drive klasörleri listelenemedi: {e}"))?;
+    let mut keys = drive
+        .get_sync_keys()
+        .await
+        .map_err(|e| format!("Anahtar kaydı okunamadı (yeniden giriş yapmayı dene): {e}"))?;
+
+    let mut config = sync_core::config::AppConfig::load();
+
+    // Bu PC'de zaten olan ama bulutta anahtarı kayıtlı olmayan sync'leri kaydet
+    // (eski sürümde kayıt sessizce başarısız olmuş olabilir). Kod formatı: cs-{folderId}-{hexKey}
+    let local_codes: Vec<String> = config
+        .sync_folders
+        .iter()
+        .map(|f| if f.code.is_empty() { f.id.clone() } else { f.code.clone() })
+        .collect();
+    for code in local_codes {
+        if let Some((fid, hex_key)) = code.strip_prefix("cs-").and_then(|r| r.rsplit_once('-')) {
+            if !keys.contains_key(fid) && drive.save_sync_key(fid, hex_key).await.is_ok() {
+                keys.insert(fid.to_string(), hex_key.to_string());
+            }
+        }
+    }
+
+    let mut added = 0;
+    for (fid, name) in cloud_folders {
+        let Some(hex_key) = keys.get(&fid) else { continue };
+        let code = format!("cs-{}-{}", fid, hex_key);
+        let prefix = format!("cs-{}-", fid);
+        if config.sync_folders.iter().any(|f| f.id == code || f.code.starts_with(&prefix) || f.id.starts_with(&prefix)) {
+            continue;
+        }
+        let display_name = name.replace("ConnectSync_", "");
+        config.sync_folders.push(sync_core::config::SyncFolder {
+            id: code.clone(),
+            name: display_name.clone(),
+            path: dirs::download_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("ConnectSync")
+                .join(&display_name)
+                .to_string_lossy()
+                .to_string(),
+            code,
+        });
+        added += 1;
+    }
+    let _ = config.save();
+    Ok(added)
+}
