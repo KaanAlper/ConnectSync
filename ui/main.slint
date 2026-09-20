@@ -479,7 +479,7 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     alignment: center;
                     if root.is_syncing: SmoothSpinner { width: 50px; height: 50px; }
-                    if !root.is_syncing: Text { text: "✓"; font-size: 2.5rem; color: #a6e3a1; horizontal-alignment: center; }
+                    if !root.is_syncing: Image { source: @image-url("check.svg"); width: 48px; height: 48px; colorize: #a6e3a1; }
                 }
 
                 Text { text: root.active_sync_folder; font-size: 1.4rem; font-weight: 700; color: #cdd6f4; horizontal-alignment: center; }
@@ -727,12 +727,11 @@ export component MainWindow inherits Window {
                     Rectangle { width: 5px; height: 15px; Rectangle { width: 5px; height: 5px; border-radius: 2.5px; background: white; y: 5px + sin(animation-tick() / 1s * 360deg - 120deg) * 4px; } }
                 }
 
-                if root.is_logged_in && !root.is_syncing : Text {
-                    text: "✓";
-                    color: white;
-                    font-size: 1.1rem;
-                    font-weight: 800;
-                    vertical-alignment: center;
+                if root.is_logged_in && !root.is_syncing : Image {
+                    source: @image-url("check.svg");
+                    width: 16px;
+                    height: 16px;
+                    colorize: white;
                 }
 
                 if root.is_logged_in && root.is_syncing : Rectangle {
