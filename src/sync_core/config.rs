@@ -17,6 +17,9 @@ pub struct SyncFolder {
 pub struct AppConfig {
     pub sync_interval_minutes: u32, 
     pub auto_start_enabled: bool,
+    pub start_in_tray: bool,
+    pub concurrent_threads: u32,
+    pub language: String,
     pub sync_folders: Vec<SyncFolder>,
 }
 
@@ -25,6 +28,9 @@ impl Default for AppConfig {
         Self {
             sync_interval_minutes: 5,
             auto_start_enabled: false,
+            start_in_tray: true,
+            concurrent_threads: 4,
+            language: "tr".to_string(),
             sync_folders: Vec::new(),
         }
     }

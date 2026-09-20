@@ -286,6 +286,11 @@ export component MainWindow inherits Window {
     callback manual_sync_requested(string /*id*/);
     callback fully_quit_requested();
     callback remove_sync_folder(string /*id*/);
+    
+    callback autostart_toggled(bool);
+    callback start_in_tray_toggled(bool);
+    callback language_changed(string);
+
 
     VerticalLayout {
         padding: 15px;
@@ -826,7 +831,8 @@ export component MainWindow inherits Window {
                 Text { text: "Bilgisayar açıldığında otomatik başlat"; color: #cdd6f4; vertical-alignment: center; }
                 Rectangle { width: 10px; }
                 Switch { 
-                    checked <=> root.setting_autostart; 
+                    checked <=> root.setting_autostart;
+                    toggled => { root.autostart_toggled(root.setting_autostart); } 
                 }
             }
             HorizontalLayout {
@@ -835,7 +841,8 @@ export component MainWindow inherits Window {
                 Rectangle { width: 10px; }
                 Switch { 
                     enabled: root.setting_autostart;
-                    checked <=> root.setting_start_in_tray; 
+                    checked <=> root.setting_start_in_tray;
+                    toggled => { root.start_in_tray_toggled(root.setting_start_in_tray); } 
                 }
             }
             Rectangle { height: 10px; }
@@ -853,6 +860,22 @@ export component MainWindow inherits Window {
 
             Rectangle { height: 20px; }
 
+            
+            HorizontalLayout {
+                Text { text: "Uygulama Dili (Language)"; color: #a6adc8; vertical-alignment: center; }
+                Rectangle { width: 10px; }
+                Rectangle {
+                    width: 100px; height: 30px; border-radius: 8px; background: #313244;
+                    Text { text: "Türkçe (TR)"; color: #cdd6f4; horizontal-alignment: center; vertical-alignment: center; font-size: 0.9rem; }
+                    TouchArea {
+                        clicked => {
+                            root.language_changed("en");
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 5px; }
             Text { text: "Sistem & Güncelleme"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
             DarkButton {
                 text: "Güncellemeleri Denetle";

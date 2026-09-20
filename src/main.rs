@@ -1,6 +1,32 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::error::Error;
+
+use auto_launch::AutoLaunchBuilder;
+
+fn configure_autostart(enable: bool, start_in_tray: bool) {
+    let app_path = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("connectsync"));
+    let app_path_str = app_path.to_str().unwrap();
+    
+    let args: &[&str] = if start_in_tray { &["--autostart", "--tray"] } else { &["--autostart"] };
+    
+    let auto = match AutoLaunchBuilder::new()
+        .set_app_name("ConnectSync")
+        .set_app_path(app_path_str)
+        .set_use_launch_agent(true)
+        .set_args(args)
+        .build() {
+            Ok(a) => a,
+            Err(_) => return,
+        };
+
+    if enable {
+        let _ = auto.enable();
+    } else {
+        let _ = auto.disable();
+    }
+}
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use rfd::FileDialog;
@@ -155,6 +181,28 @@ fn setup_ui(
     let ui_remove = ui.as_weak();
     let ui_weak_scan = ui.as_weak();
     let app_state_scan = app_state.clone();
+    
+    // Autostart callbacks
+    ui.on_autostart_toggled(move |enabled| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.auto_start_enabled = enabled;
+        let _ = cfg.save();
+        crate::configure_autostart(enabled, cfg.start_in_tray);
+    });
+
+    ui.on_start_in_tray_toggled(move |enabled| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.start_in_tray = enabled;
+        let _ = cfg.save();
+        crate::configure_autostart(cfg.auto_start_enabled, enabled);
+    });
+
+    ui.on_language_changed(move |lang| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.language = lang.to_string();
+        let _ = cfg.save();
+    });
+
     ui.on_scan_cloud_syncs(move || {
         let ui_weak_bg = ui_weak_scan.clone();
         let app_state_bg = app_state_scan.clone();
