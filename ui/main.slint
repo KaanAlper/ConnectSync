@@ -128,7 +128,7 @@ component SmoothSpinner inherits Rectangle {
     Image {
         width: 100%;
         height: 100%;
-        source: @image-url("spinner.svg");
+        source: @image-url("emojis/spinner.svg");
         transform-rotation: root.rot;
     }
 }
@@ -316,11 +316,11 @@ export component MainWindow inherits Window {
                 alignment: end;
 
                 IconButton {
-                    icon: @image-url("minimize.svg");
+                    icon: @image-url("emojis/minimize.svg");
                     clicked => { root.minimize_requested() }
                 }
                 IconButton {
-                    icon: @image-url("close.svg");
+                    icon: @image-url("emojis/close.svg");
                     clicked => { root.show_quit_dialog = true; }
                 }
             }
@@ -337,7 +337,7 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                     alignment: center;
                     IconButton {
-                        icon: @image-url("back.svg");
+                        icon: @image-url("emojis/back.svg");
                         clicked => { root.show_my_syncs = false; }
                     }
                 }
@@ -479,7 +479,7 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     alignment: center;
                     if root.is_syncing: SmoothSpinner { width: 50px; height: 50px; }
-                    if !root.is_syncing: Image { source: @image-url("check.svg"); width: 48px; height: 48px; colorize: #a6e3a1; }
+                    if !root.is_syncing: Image { source: @image-url("emojis/check.svg"); width: 48px; height: 48px; colorize: #a6e3a1; }
                 }
 
                 Text { text: root.active_sync_folder; font-size: 1.4rem; font-weight: 700; color: #cdd6f4; horizontal-alignment: center; }
@@ -502,7 +502,7 @@ export component MainWindow inherits Window {
                             HorizontalLayout {
                                 alignment: center;
                                 spacing: 8px;
-                                Image { source: @image-url("copy.svg"); width: 14px; height: 14px; colorize: #89b4fa; y: 11px; }
+                                Image { source: @image-url("emojis/copy.svg"); width: 14px; height: 14px; colorize: #89b4fa; y: 11px; }
                                 Text { text: "Kodu Kopyala"; color: #89b4fa; font-weight: 600; font-size: 0.9rem; vertical-alignment: center; }
                             }
                             ta_acopy := TouchArea { clicked => { root.copy_to_clipboard(root.active_sync_code, "active"); } }
@@ -625,7 +625,7 @@ export component MainWindow inherits Window {
                                             height: 32px;
                                             border-radius: 4px;
                                             background: ta_copy.pressed ? #a6e3a1 : (ta_copy.has-hover ? #b4befe : transparent);
-                                            Image { source: @image-url("copy.svg"); width: 16px; height: 16px; colorize: ta_copy.has-hover ? #11111b : #cdd6f4; }
+                                            Image { source: @image-url("emojis/copy.svg"); width: 16px; height: 16px; colorize: ta_copy.has-hover ? #11111b : #cdd6f4; }
                                             ta_copy := TouchArea {
                                                 clicked => { root.copy_to_clipboard(folder.code, folder.id) }
                                             }
@@ -645,7 +645,7 @@ export component MainWindow inherits Window {
                                         height: 32px;
                                         border-radius: 4px;
                                         background: ta_remove.pressed ? #f38ba8 : (ta_remove.has-hover ? #eba0ac : transparent);
-                                        Image { source: @image-url("trash.svg"); width: 16px; height: 16px; colorize: ta_remove.has-hover ? #11111b : #f38ba8; }
+                                        Image { source: @image-url("emojis/trash.svg"); width: 16px; height: 16px; colorize: ta_remove.has-hover ? #11111b : #f38ba8; }
                                         ta_remove := TouchArea {
                                             clicked => { root.stop_sync(folder.id) }
                                         }
@@ -728,7 +728,7 @@ export component MainWindow inherits Window {
                 }
 
                 if root.is_logged_in && !root.is_syncing : Image {
-                    source: @image-url("check.svg");
+                    source: @image-url("emojis/check.svg");
                     width: 16px;
                     height: 16px;
                     colorize: white;
@@ -813,7 +813,7 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                     alignment: center;
                     IconButton {
-                        icon: @image-url("back.svg");
+                        icon: @image-url("emojis/back.svg");
                         clicked => { root.show_settings = false; }
                     }
                 }
@@ -1048,7 +1048,7 @@ export component MainWindow inherits Window {
             y: 50px;
             width: 32px;
             height: 32px;
-            icon: @image-url("settings.svg");
+            icon: @image-url("emojis/settings.svg");
             clicked => {
                 root.show_settings = true;
             }
