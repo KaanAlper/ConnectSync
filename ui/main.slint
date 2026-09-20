@@ -1,5 +1,50 @@
 import { Button, VerticalBox, HorizontalBox, LineEdit, ScrollView, ComboBox } from "std-widgets.slint";
 
+// Çeviri metinleri — değerler Rust tarafında (i18n.rs + locales/*.json) doldurulur
+export global Tr {
+    in property <string> settings;
+    in property <string> my_syncs;
+    in property <string> find_from_cloud;
+    in property <string> logout;
+    in property <string> check_updates;
+    in property <string> sync_code_title;
+    in property <string> cancel;
+    in property <string> connect;
+    in property <string> login_google;
+    in property <string> retry;
+    in property <string> new_sync;
+    in property <string> connect_to_code;
+    in property <string> copy_code;
+    in property <string> copied;
+    in property <string> main_menu;
+    in property <string> stop_and_delete;
+    in property <string> no_syncs_title;
+    in property <string> no_syncs_hint;
+    in property <string> status_syncing;
+    in property <string> status_connected;
+    in property <string> status_connecting;
+    in property <string> status_waiting_login;
+    in property <string> quit_title;
+    in property <string> quit_body;
+    in property <string> quit;
+    in property <string> section_startup;
+    in property <string> autostart;
+    in property <string> start_in_tray;
+    in property <string> section_performance;
+    in property <string> threads_label;
+    in property <string> threads_hint;
+    in property <string> language_label;
+    in property <string> section_system;
+    in property <string> remove_sync_title;
+    in property <string> remove_sync_body;
+    in property <string> delete_from_drive;
+    in property <string> remove;
+    in property <string> update_ready_title;
+    in property <string> update_ready_body;
+    in property <string> later;
+    in property <string> restart;
+}
+
 
 component Switch inherits Rectangle {
     in-out property <bool> checked: false;
@@ -170,7 +215,7 @@ component SyncCodeDialog inherits Rectangle {
         alignment: center;
 
         Text {
-            text: "Sync Kodunu Girin";
+            text: Tr.sync_code_title;
             color: #cdd6f4;
             font-size: 1.1rem;
             font-weight: 600;
@@ -208,12 +253,12 @@ component SyncCodeDialog inherits Rectangle {
             spacing: 15px;
             alignment: center;
             ModernButton {
-                text: "İptal";
+                text: Tr.cancel;
                 width: 100px;
                 clicked => { root.cancelled() }
             }
             ModernButton {
-                text: "Bağlan";
+                text: Tr.connect;
                 width: 100px;
                 clicked => { root.confirmed(root.input_code) }
             }
@@ -265,14 +310,14 @@ export component MainWindow inherits Window {
     in-out property <bool> show_settings: false;
     in-out property <bool> setting_autostart: false;
     in-out property <bool> setting_start_in_tray: true;
-    in-out property <string> setting_language: "Türkçe (TR)";
+    in-out property <string> setting_language: "tr";
     in-out property <bool> show_update_dialog: false;
     in-out property <string> active_sync_code: "";
     // Aktif sync ekranı "Ana Menü" ile gizlendiğinde true olur (sync arka planda sürer, kod kaybolmaz)
     in-out property <bool> active_hidden: false;
     property <bool> active_screen_open: active_sync_code != "" && !active_hidden;
     in-out property <string> active_sync_folder: "";
-    in-out property <string> status_text: "Hazır";
+    in-out property <string> status_text: "";
     in-out property <string> copy_feedback_id: "";
     in-out property <bool> show_quit_dialog: false;
     in-out property <bool> show_delete_dialog: false;
@@ -366,7 +411,7 @@ export component MainWindow inherits Window {
                 }
 
                 Text {
-                    text: "Senkronizasyonlarım";
+                    text: Tr.my_syncs;
                     color: white;
                     font-size: 1.15rem;
                     font-weight: 700;
@@ -382,7 +427,7 @@ export component MainWindow inherits Window {
                         height: 30px;
                         border-radius: 15px;
                         background: ta_scan.pressed ? #74c7ec : (ta_scan.has-hover ? #89dceb : #89b4fa);
-                        Text { text: "Buluttan Bul"; color: #11111b; font-weight: 700; font-size: 0.85rem; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: Tr.find_from_cloud; color: #11111b; font-weight: 700; font-size: 0.85rem; horizontal-alignment: center; vertical-alignment: center; }
                         ta_scan := TouchArea { clicked => { root.scan_cloud_syncs() } }
                     }
                 }
@@ -425,19 +470,25 @@ export component MainWindow inherits Window {
                 // ------------
 
                 ModernButton {
-                    text: "Google Drive ile Giriş Yap";
+                    text: Tr.login_google;
                     clicked => { root.login_requested() }
                 }
             }
 
-            if !is_logged_in && is_logging_in: HorizontalLayout {
+            if !is_logged_in && is_logging_in: VerticalLayout {
                 width: parent.width; height: parent.height; alignment: center;
-                spacing: 20px;
-                SmoothSpinner { width: 30px; height: 30px; }
-                ModernButton {
-                    text: "Tekrar Dene";
-                    width: 150px;
-                    clicked => { root.login_requested() }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 20px;
+                    VerticalLayout {
+                        alignment: center;
+                        SmoothSpinner { width: 30px; height: 30px; }
+                    }
+                    ModernButton {
+                        text: Tr.retry;
+                        width: 150px;
+                        clicked => { root.login_requested() }
+                    }
                 }
             }
 
@@ -474,17 +525,17 @@ export component MainWindow inherits Window {
                         spacing: 10px;
 
                         DarkButton {
-                            text: "Yeni Bir Sync Klasörü Oluştur";
+                            text: Tr.new_sync;
                             clicked => { root.create_new_sync() }
                         }
 
                         DarkButton {
-                            text: "Bir Sync Koduna Bağlan";
+                            text: Tr.connect_to_code;
                             clicked => { root.show_connect_dialog = true; }
                         }
 
                         ModernButton {
-                            text: "Senkronizasyonlarım";
+                            text: Tr.my_syncs;
                             clicked => { root.show_my_syncs = true; root.scan_cloud_syncs(); }
                         }
                     }
@@ -526,13 +577,13 @@ export component MainWindow inherits Window {
                                 alignment: center;
                                 spacing: 8px;
                                 Image { source: @image-url("emojis/copy.svg"); width: 14px; height: 14px; colorize: #89b4fa; y: 11px; }
-                                Text { text: "Kodu Kopyala"; color: #89b4fa; font-weight: 600; font-size: 0.9rem; vertical-alignment: center; }
+                                Text { text: Tr.copy_code; color: #89b4fa; font-weight: 600; font-size: 0.9rem; vertical-alignment: center; }
                             }
                             ta_acopy := TouchArea { clicked => { root.copy_to_clipboard(root.active_sync_code, "active"); } }
                         }
                     }
                     Text {
-                        text: "Kopyalandı!";
+                        text: Tr.copied;
                         color: #a6e3a1;
                         font-size: 0.85rem;
                         horizontal-alignment: center;
@@ -544,8 +595,8 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     spacing: 15px;
                     alignment: center;
-                    ModernButton { text: "Ana Menü"; width: 120px; clicked => { root.active_hidden = true; } }
-                    ModernButton { text: "Durdur & Sil"; width: 120px; clicked => { root.stop_sync(root.active_sync_code); root.active_sync_code = ""; root.active_hidden = false; } }
+                    ModernButton { text: Tr.main_menu; width: 120px; clicked => { root.active_hidden = true; } }
+                    ModernButton { text: Tr.stop_and_delete; width: 120px; clicked => { root.stop_sync(root.active_sync_code); root.active_sync_code = ""; root.active_hidden = false; } }
                 }
             }
 
@@ -585,7 +636,7 @@ export component MainWindow inherits Window {
                     }
 
                     Text {
-                        text: "Henüz bir sync klasörün yok";
+                        text: Tr.no_syncs_title;
                         color: #cdd6f4;
                         font-size: 1.0rem;
                         font-weight: 600;
@@ -596,7 +647,7 @@ export component MainWindow inherits Window {
                         alignment: center;
                         Text {
                             width: 270px;
-                            text: "Yeni bir klasör oluştur, bir sync koduna bağlan ya da Drive'daki klasörlerini getirmek için \"Buluttan Bul\"a dokun.";
+                            text: Tr.no_syncs_hint;
                             color: #7f849c;
                             font-size: 0.82rem;
                             wrap: word-wrap;
@@ -650,7 +701,7 @@ export component MainWindow inherits Window {
                                                 }
                                             }
                                             Text {
-                                                text: "Kopyalandı!";
+                                                text: Tr.copied;
                                                 color: #a6e3a1;
                                                 font-size: 0.6rem;
                                                 horizontal-alignment: center;
@@ -663,9 +714,11 @@ export component MainWindow inherits Window {
                                             width: 32px;
                                             height: 32px;
                                             border-radius: 4px;
-                                            background: ta_refresh.pressed ? #a6e3a1 : (ta_refresh.has-hover ? #b4befe : transparent);
-                                            Image { source: @image-url("emojis/refresh.svg"); width: 16px; height: 16px; colorize: ta_refresh.has-hover ? #11111b : #cdd6f4; }
+                                            opacity: folder.is_syncing ? 0.35 : 1.0;
+                                            background: (!folder.is_syncing && ta_refresh.pressed) ? #a6e3a1 : ((!folder.is_syncing && ta_refresh.has-hover) ? #b4befe : transparent);
+                                            Image { source: @image-url("emojis/refresh.svg"); width: 16px; height: 16px; colorize: (!folder.is_syncing && ta_refresh.has-hover) ? #11111b : #cdd6f4; }
                                             ta_refresh := TouchArea {
+                                                enabled: !folder.is_syncing;
                                                 clicked => { root.manual_sync_requested(folder.id) }
                                             }
                                         }
@@ -740,7 +793,7 @@ export component MainWindow inherits Window {
             HorizontalLayout {
                 alignment: start;
                 if is_logged_in: Text {
-                    text: "Çıkış Yap";
+                    text: Tr.logout;
                     color: ta_logout.has-hover ? #f38ba8 : #7f849c;
                     font-size: 0.85rem;
                     vertical-alignment: center;
@@ -778,9 +831,9 @@ export component MainWindow inherits Window {
                 Text {
                     text: root.is_logged_in
                     ? (root.sync_folders.length > 0
-                    ? (root.is_syncing ? "Eşitleniyor" : "Drive Bağlı")
-                    : "Drive Bağlı")
-                    : (root.is_logging_in ? "Bağlanıyor..." : "Giriş Bekleniyor");
+                    ? (root.is_syncing ? Tr.status_syncing : Tr.status_connected)
+                    : Tr.status_connected)
+                    : (root.is_logging_in ? Tr.status_connecting : Tr.status_waiting_login);
                     color: #a6adc8;
                     font-size: 0.85rem;
                     vertical-alignment: center;
@@ -813,19 +866,19 @@ export component MainWindow inherits Window {
                 spacing: 15px;
                 alignment: center;
 
-                Text { text: "Kapatmaktan emin misiniz?"; color: #cdd6f4; font-size: 1.1rem; font-weight: 600; horizontal-alignment: center; }
-                Text { text: "Uygulama tamamen sonlandırılacak."; color: #a6adc8; font-size: 0.85rem; horizontal-alignment: center; }
+                Text { text: Tr.quit_title; color: #cdd6f4; font-size: 1.1rem; font-weight: 600; horizontal-alignment: center; }
+                Text { text: Tr.quit_body; color: #a6adc8; font-size: 0.85rem; horizontal-alignment: center; }
 
                 HorizontalLayout {
                     spacing: 15px;
                     alignment: center;
-                    ModernButton { text: "İptal"; width: 100px; clicked => { root.show_quit_dialog = false; } }
+                    ModernButton { text: Tr.cancel; width: 100px; clicked => { root.show_quit_dialog = false; } }
                     Rectangle {
                         width: 100px;
                         height: 40px;
                         border-radius: 8px;
                         background: ta_quit.pressed ? #eba0ac : (ta_quit.has-hover ? #f38ba8 : #f38ba8);
-                        Text { text: "Kapat"; color: #11111b; font-size: 0.95rem; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: Tr.quit; color: #11111b; font-size: 0.95rem; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                         ta_quit := TouchArea { clicked => { root.fully_quit_requested(); } }
                     }
                 }
@@ -853,7 +906,7 @@ export component MainWindow inherits Window {
                 }
 
                 Text {
-                    text: "Ayarlar";
+                    text: Tr.settings;
                     color: white;
                     font-size: 1.15rem;
                     font-weight: 700;
@@ -868,14 +921,15 @@ export component MainWindow inherits Window {
             ScrollView {
                 width: 100%;
                 height: 100%;
+                viewport-width: self.width;
                 VerticalLayout {
                     spacing: 16px;
                     alignment: start;
                     padding-bottom: 20px;
                     
-                    Text { text: "Başlangıç"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+                    Text { text: Tr.section_startup; color: #89b4fa; font-size: 1rem; font-weight: 700; }
                     HorizontalLayout {
-                        Text { text: "Bilgisayar açıldığında otomatik başlat"; color: #cdd6f4; vertical-alignment: center; }
+                        Text { text: Tr.autostart; color: #cdd6f4; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; }
                         Rectangle { width: 10px; }
                         Switch { 
                             checked <=> root.setting_autostart;
@@ -884,7 +938,7 @@ export component MainWindow inherits Window {
                     }
                     HorizontalLayout {
                         opacity: root.setting_autostart ? 1.0 : 0.5;
-                        Text { text: "Arka planda (Sistem tepsisinde) başlat"; color: #a6adc8; vertical-alignment: center; }
+                        Text { text: Tr.start_in_tray; color: #a6adc8; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; }
                         Rectangle { width: 10px; }
                         Switch { 
                             enabled: root.setting_autostart;
@@ -894,50 +948,38 @@ export component MainWindow inherits Window {
                     }
                     Rectangle { height: 10px; }
 
-                    Text { text: "Performans"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+                    Text { text: Tr.section_performance; color: #89b4fa; font-size: 1rem; font-weight: 700; }
                     HorizontalLayout {
-                        Text { text: "İndirme Parça Sayısı (Concurrent Threads):"; color: #a6adc8; vertical-alignment: center; }
+                        Text { text: Tr.threads_label; color: #a6adc8; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; }
                         Rectangle { width: 10px; }
                         LineEdit { text: "4"; width: 60px; }
                     }
                     Text { 
-                        text: "Yüksek parça sayısı indirmeyi hızlandırır ancak işlemci kullanımını artırır."; 
-                        color: #6c7086; font-size: 0.8rem; 
+                        text: Tr.threads_hint; 
+                        color: #6c7086; font-size: 0.8rem; wrap: word-wrap; 
                     }
 
                     Rectangle { height: 20px; }
 
                     HorizontalLayout {
-                        Text { text: "Uygulama Dili (Language)"; color: #a6adc8; vertical-alignment: center; }
+                        Text { text: Tr.language_label; color: #a6adc8; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; }
                         Rectangle { width: 10px; }
                         ComboBox {
                             width: 120px;
                             height: 30px;
-                            model: ["Türkçe", "English", "Deutsch", "Español", "Français", "中文", "한국어", "日本語"];
-                            current-value: root.setting_language == "en" ? "English" : 
-                                        root.setting_language == "de" ? "Deutsch" : 
-                                        root.setting_language == "es" ? "Español" : 
-                                        root.setting_language == "fr" ? "Français" : 
-                                        root.setting_language == "zh" ? "中文" : 
-                                        root.setting_language == "ko" ? "한국어" : 
-                                        root.setting_language == "ja" ? "日本語" : "Türkçe";
+                            model: ["Türkçe", "English"];
+                            current-value: root.setting_language == "en" ? "English" : "Türkçe";
                             selected(val) => {
                                 if (val == "English") { root.language_changed("en"); }
-                                else if (val == "Deutsch") { root.language_changed("de"); }
-                                else if (val == "Español") { root.language_changed("es"); }
-                                else if (val == "Français") { root.language_changed("fr"); }
-                                else if (val == "中文") { root.language_changed("zh"); }
-                                else if (val == "한국어") { root.language_changed("ko"); }
-                                else if (val == "日本語") { root.language_changed("ja"); }
                                 else { root.language_changed("tr"); }
                             }
                         }
                     }
 
                     Rectangle { height: 5px; }
-                    Text { text: "Sistem & Güncelleme"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+                    Text { text: Tr.section_system; color: #89b4fa; font-size: 1rem; font-weight: 700; }
                     DarkButton {
-                        text: "Güncellemeleri Denetle";
+                        text: Tr.check_updates;
                         clicked => { 
                             // TEST: Popup'i gostermek icin
                             root.show_update_dialog = true; 
@@ -1002,14 +1044,14 @@ export component MainWindow inherits Window {
                     spacing: 16px;
                     alignment: center;
                     
-                    Text { text: "Senkronizasyonu Kaldır"; font-size: 1.2rem; font-weight: 700; color: #cdd6f4; horizontal-alignment: center; }
-                    Text { text: "Bu klasörü listeden çıkarmak istiyor musunuz?"; font-size: 0.9rem; color: #a6adc8; horizontal-alignment: center; wrap: word-wrap; }
+                    Text { text: Tr.remove_sync_title; font-size: 1.2rem; font-weight: 700; color: #cdd6f4; horizontal-alignment: center; }
+                    Text { text: Tr.remove_sync_body; font-size: 0.9rem; color: #a6adc8; horizontal-alignment: center; wrap: word-wrap; }
                     
                     HorizontalLayout {
                         alignment: center;
                         spacing: 10px;
                         Switch { checked <=> root.delete_from_cloud; }
-                        Text { text: "Drive'daki verileri de sil"; font-size: 0.85rem; color: #f38ba8; vertical-alignment: center; }
+                        Text { text: Tr.delete_from_drive; font-size: 0.85rem; color: #f38ba8; vertical-alignment: center; }
                     }
 
                     HorizontalLayout {
@@ -1018,13 +1060,13 @@ export component MainWindow inherits Window {
                         
                         Rectangle {
                             width: 110px; height: 36px; border-radius: 18px; border-width: 1px; border-color: #585b70; background: transparent;
-                            Text { text: "İptal"; color: #cdd6f4; horizontal-alignment: center; vertical-alignment: center; }
+                            Text { text: Tr.cancel; color: #cdd6f4; horizontal-alignment: center; vertical-alignment: center; }
                             TouchArea { clicked => { root.show_delete_dialog = false; } }
                         }
                         
                         Rectangle {
                             width: 110px; height: 36px; border-radius: 18px; background: #f38ba8;
-                            Text { text: "Kaldır"; color: #11111b; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                            Text { text: Tr.remove; color: #11111b; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                             TouchArea { clicked => { 
                                 root.confirm_delete_sync(root.delete_target_id, root.delete_from_cloud); 
                                 root.show_delete_dialog = false; 
@@ -1061,14 +1103,14 @@ export component MainWindow inherits Window {
                     alignment: center;
                     
                     Text {
-                        text: "Güncelleme Hazır!";
+                        text: Tr.update_ready_title;
                         font-size: 1.2rem;
                         color: #cdd6f4;
                         font-weight: 700;
                         horizontal-alignment: center;
                     }
                     Text {
-                        text: "Arka planda yeni sürüm başarıyla indirildi. Uygulamak için ConnectSync'i yeniden başlatmak ister misiniz?";
+                        text: Tr.update_ready_body;
                         font-size: 0.9rem;
                         color: #a6adc8;
                         horizontal-alignment: center;
@@ -1079,12 +1121,12 @@ export component MainWindow inherits Window {
                         alignment: center;
                         height: 40px;
                         DarkButton {
-                            text: "Daha Sonra";
+                            text: Tr.later;
                             width: 120px;
                             clicked => { root.show_update_dialog = false; }
                         }
                         ModernButton {
-                            text: "Yeniden Başlat";
+                            text: Tr.restart;
                             width: 130px;
                             clicked => { 
                                 // root.fully_quit_requested(); // Veya restart event'i
