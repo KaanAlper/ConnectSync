@@ -245,11 +245,11 @@ export component MainWindow inherits Window {
                 spacing: 8px;
                 alignment: end;
                 IconButton {
-                    text: "—";
+                    text: "_";
                     clicked => { root.minimize_requested() }
                 }
                 IconButton {
-                    text: "✕";
+                    text: "X";
                     clicked => { root.show_quit_dialog = true; }
                 }
             }
