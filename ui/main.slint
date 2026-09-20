@@ -967,10 +967,22 @@ export component MainWindow inherits Window {
                         ComboBox {
                             width: 120px;
                             height: 30px;
-                            model: ["Türkçe", "English"];
-                            current-value: root.setting_language == "en" ? "English" : "Türkçe";
+                            model: ["Türkçe", "English", "Deutsch", "Español", "Français", "中文", "한국어", "日本語"];
+                            current-value: root.setting_language == "en" ? "English" :
+                                           root.setting_language == "de" ? "Deutsch" :
+                                           root.setting_language == "es" ? "Español" :
+                                           root.setting_language == "fr" ? "Français" :
+                                           root.setting_language == "zh" ? "中文" :
+                                           root.setting_language == "ko" ? "한국어" :
+                                           root.setting_language == "ja" ? "日本語" : "Türkçe";
                             selected(val) => {
                                 if (val == "English") { root.language_changed("en"); }
+                                else if (val == "Deutsch") { root.language_changed("de"); }
+                                else if (val == "Español") { root.language_changed("es"); }
+                                else if (val == "Français") { root.language_changed("fr"); }
+                                else if (val == "中文") { root.language_changed("zh"); }
+                                else if (val == "한국어") { root.language_changed("ko"); }
+                                else if (val == "日本語") { root.language_changed("ja"); }
                                 else { root.language_changed("tr"); }
                             }
                         }

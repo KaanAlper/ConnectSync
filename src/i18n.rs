@@ -9,6 +9,12 @@ use std::sync::{OnceLock, RwLock};
 const LANGS: &[(&str, &str, &str)] = &[
     ("tr", "Türkçe", include_str!("../locales/tr.json")),
     ("en", "English", include_str!("../locales/en.json")),
+    ("de", "Deutsch", include_str!("../locales/de.json")),
+    ("es", "Español", include_str!("../locales/es.json")),
+    ("fr", "Français", include_str!("../locales/fr.json")),
+    ("zh", "中文", include_str!("../locales/zh.json")),
+    ("ko", "한국어", include_str!("../locales/ko.json")),
+    ("ja", "日本語", include_str!("../locales/ja.json")),
 ];
 
 const FALLBACK: &str = "tr";
