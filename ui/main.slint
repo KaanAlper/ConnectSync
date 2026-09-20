@@ -208,6 +208,7 @@ export component MainWindow inherits Window {
     // UI state
     in-out property <bool> show_connect_dialog: false;
     in-out property <bool> show_my_syncs: false;
+    in-out property <bool> show_settings: false;
     in-out property <string> active_sync_code: "";
     in-out property <string> active_sync_folder: "";
     in-out property <string> status_text: "Hazır";
@@ -247,7 +248,9 @@ export component MainWindow inherits Window {
                 IconButton {
                     text: "⚙";
                     clicked => {
-                        // root.show_settings = true;
+                        root.show_connect_dialog = false;
+                        root.show_my_syncs = false;
+                        root.show_settings = true;
                     }
                 }
                 IconButton {
@@ -734,6 +737,44 @@ export component MainWindow inherits Window {
             }
         }
     }
+
+        
+        // ── Settings Screen ─────────────────────────
+        if show_settings: VerticalLayout {
+            spacing: 16px;
+            padding: 30px;
+            alignment: start;
+            
+            HorizontalLayout {
+                alignment: start;
+                IconButton {
+                    text: "←";
+                    clicked => { root.show_settings = false; }
+                }
+                Text { text: "  Ayarlar"; font-size: 1.4rem; color: #cdd6f4; font-weight: 700; vertical-alignment: center; }
+            }
+            
+            Rectangle { height: 1px; background: #313244; }
+
+            Text { text: "Performans"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+            HorizontalLayout {
+                Text { text: "İndirme Parça Sayısı (Concurrent Threads):"; color: #a6adc8; vertical-alignment: center; }
+                Rectangle { width: 10px; }
+                LineEdit { text: "4"; width: 60px; }
+            }
+            Text { 
+                text: "Yüksek parça sayısı indirmeyi hızlandırır ancak işlemci kullanımını artırır."; 
+                color: #6c7086; font-size: 0.8rem; 
+            }
+
+            Rectangle { height: 20px; }
+
+            Text { text: "Sistem & Güncelleme"; color: #89b4fa; font-size: 1rem; font-weight: 700; }
+            DarkButton {
+                text: "Güncellemeleri Denetle";
+                clicked => { /* Check for updates */ }
+            }
+        }
 
         // ── Active Sync Mini Drawer (Right edge) ─────────────────────────
         if (is_syncing && !show_my_syncs && active_sync_folder != ""): Rectangle {
