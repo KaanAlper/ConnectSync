@@ -728,4 +728,31 @@ export component MainWindow inherits Window {
             }
         }
     }
+
+        // ── Active Sync Mini Drawer (Right edge) ─────────────────────────
+        if (is_syncing && !show_my_syncs && active_sync_folder != ""): Rectangle {
+            x: root.width - self.width;
+            y: root.height / 2 - self.height / 2;
+            width: 48px;
+            height: 64px;
+            background: #181825cc; // Yari saydam, arka planla uyumlu
+            border-top-left-radius: 32px;
+            border-bottom-left-radius: 32px;
+            border-width: 1px;
+            border-color: #313244;
+            // Sag kenari cercevesiz gosterip, duvara yapisik hissi vermek icin:
+            
+            SmoothSpinner {
+                x: 12px;
+                y: 17px;
+            }
+
+            ta_mini := TouchArea {
+                clicked => {
+                    // Aktif senkronizasyon klasorunun detayina git veya sync sayfasini ac
+                    root.show_my_syncs = true;
+                }
+            }
+        }
+
 }
