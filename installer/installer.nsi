@@ -18,7 +18,7 @@ SetCompressor /SOLID lzma
 !define MUI_BGCOLOR "1E1E2E"
 !define MUI_TEXTCOLOR "CDD6F4"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "ConnectSync'i başlat"
+!define MUI_FINISHPAGE_RUN_TEXT $(FinishPageText)
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -26,7 +26,29 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Turkish"
+!insertmacro MUI_LANGUAGE "German"
+!insertmacro MUI_LANGUAGE "Spanish"
+!insertmacro MUI_LANGUAGE "French"
+!insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_LANGUAGE "Korean"
+!insertmacro MUI_LANGUAGE "Japanese"
+
+LangString FinishPageText ${LANG_ENGLISH} "Launch ConnectSync"
+LangString FinishPageText ${LANG_TURKISH} "ConnectSync'i başlat"
+LangString FinishPageText ${LANG_GERMAN} "ConnectSync starten"
+LangString FinishPageText ${LANG_SPANISH} "Iniciar ConnectSync"
+LangString FinishPageText ${LANG_FRENCH} "Lancer ConnectSync"
+LangString FinishPageText ${LANG_SIMPCHINESE} "启动 ConnectSync"
+LangString FinishPageText ${LANG_KOREAN} "ConnectSync 시작"
+LangString FinishPageText ${LANG_JAPANESE} "ConnectSync を起動"
+
+# Dil secici diyalog
+Function .onInit
+  !insertmacro MUI_LANGDLL_DISPLAY
+FunctionEnd
+
 
 Section "Install"
   SetOutPath "$INSTDIR"

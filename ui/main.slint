@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, LineEdit, ScrollView, ComboBox } from "std-widgets.slint";
 
 
 component Switch inherits Rectangle {
@@ -265,6 +265,7 @@ export component MainWindow inherits Window {
     in-out property <bool> show_settings: false;
     in-out property <bool> setting_autostart: false;
     in-out property <bool> setting_start_in_tray: true;
+    in-out property <string> setting_language: "Türkçe (TR)";
     in-out property <bool> show_update_dialog: false;
     in-out property <string> active_sync_code: "";
     in-out property <string> active_sync_folder: "";
