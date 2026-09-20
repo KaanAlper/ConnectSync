@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -67,9 +69,9 @@ fn setup_ui(
 ) {
     // ── Başlangıç durumu: keyring'den token var mı? ──────────────────────
     if sync_core::auth::is_token_cached() {
-        let ui_w3 = ui.as_weak();
-        let ui_w3 = ui.as_weak();
         ui.set_is_logged_in(true);
+        let ui_w3 = ui.as_weak();
+        tokio::spawn(async move { fetch_cloud_folders(ui_w3).await; });
     } else {
         // Autostart senaryosu: session henüz tam açılmamış, keyring kilitli olabilir.
         // Etkileşimsiz modda sessizce dene; başarılıysa UI'ı güncelle.
@@ -88,7 +90,6 @@ fn setup_ui(
     }
 
     // Kaydedilmiş sync durumunu yükle
-    let config = sync_core::config::AppConfig::load();
     update_ui_folders(ui, &app_state);
 
 
@@ -292,11 +293,11 @@ fn setup_ui(
         // Show a loading UI directly on main screen before entering Active View?
         // Or we can enter Active View with a temporary code, and update it later.
         // Let's just enter Active View with "Bekleniyor..."
-        let temp_id = hex_key.clone(); // use hex_key temporarily
         if let Some(ui) = ui_weak.upgrade() {
-            ui.set_active_sync_code(temp_id.clone().as_str().into());
+            ui.set_active_sync_code("pending".into()); // Geçici - kopyala butonu gizlenecek
             ui.set_active_sync_folder(folder_name.as_str().into());
             ui.set_status_text("Drive klasörü oluşturuluyor...".into());
+            ui.set_is_syncing(true);
         }
 
         let ui_weak_bg = ui_weak.clone();
@@ -322,27 +323,39 @@ fn setup_ui(
                             });
                             let _ = config.save();
                             
-                            if let Some(ui) = ui_weak_bg.upgrade() {
-                                update_ui_folders(&ui, &app_state_bg);
-                                ui.set_active_sync_code(universal_code.clone().as_str().into());
-                                ui.set_status_text("Sync başlatılıyor...".into());
-                            }
+                            let code_for_ui = universal_code.clone();
+                            let ui_w_update = ui_weak_bg.clone();
+                            let app_state_update = app_state_bg.clone();
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(ui) = ui_w_update.upgrade() {
+                                    update_ui_folders(&ui, &app_state_update);
+                                    ui.set_active_sync_code(code_for_ui.as_str().into());
+                                    ui.set_status_text("Sync hazır!".into());
+                                }
+                            });
                             
                             start_sync_loop(ui_weak_bg, app_state_bg, universal_code, path);
                         },
                         Err(e) => {
-                            if let Some(ui) = ui_weak_bg.upgrade() {
-                                ui.set_error_text(format!("Drive klasörü oluşturulamadı: {}", e).as_str().into());
-                                ui.set_active_sync_code("".into());
-                            }
+                            let msg = format!("Drive klasörü oluşturulamadı: {}", e);
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(ui) = ui_weak_bg.upgrade() {
+                                    ui.set_error_text(msg.as_str().into());
+                                    ui.set_active_sync_code("".into());
+                                    ui.set_is_syncing(false);
+                                }
+                            });
                         }
                     }
                 },
                 Err(_) => {
-                    if let Some(ui) = ui_weak_bg.upgrade() {
-                        ui.set_error_text("Google Drive girişi yapılamadı.".into());
-                        ui.set_active_sync_code("".into());
-                    }
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak_bg.upgrade() {
+                            ui.set_error_text("Google Drive girişi yapılamadı.".into());
+                            ui.set_active_sync_code("".into());
+                            ui.set_is_syncing(false);
+                        }
+                    });
                 }
             }
         });
@@ -682,7 +695,6 @@ async fn run_push(engine: &Arc<sync_core::engine::SyncEngine>, ui_weak: &slint::
 
 fn update_status(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppState>>, folder_id: &str, msg: &str, syncing: bool) {
     let msg = msg.to_string();
-    let fid = folder_id.to_string();
     let app_state_clone = app_state.clone();
     {
         let mut st = app_state.lock().unwrap();
@@ -692,16 +704,18 @@ fn update_status(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppSta
         fs.error = "".into();
     }
     let uw = ui_weak.clone();
+    let msg_clone = msg.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(ui) = uw.upgrade() {
             update_ui_folders(&ui, &app_state_clone);
+            ui.set_status_text(msg_clone.as_str().into());
+            ui.set_is_syncing(syncing);
         }
     });
 }
 
 fn update_error(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppState>>, folder_id: &str, err: &str) {
     let err = err.to_string();
-    let fid = folder_id.to_string();
     let app_state_clone = app_state.clone();
     {
         let mut st = app_state.lock().unwrap();
@@ -887,3 +901,4 @@ async fn fetch_cloud_folders(ui_weak: slint::Weak<crate::MainWindow>) {
         }
     }
 }
+

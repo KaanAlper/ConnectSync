@@ -17,7 +17,7 @@ component IconButton inherits Rectangle {
     height: 30px;
     border-radius: 15px;
     background: ta.pressed ? #313244 : (ta.has-hover ? #1e1e2e : transparent);
-    
+
     if (text != ""): Text {
         text: root.text;
         color: ta.has-hover ? #cdd6f4 : #a6adc8;
@@ -40,13 +40,13 @@ component IconButton inherits Rectangle {
 component DarkButton inherits Rectangle {
     in property <string> text;
     callback clicked();
-    
+
     height: 40px;
     border-radius: 8px;
     border-width: 1px;
     border-color: ta.has-hover ? #89b4fa : #45475a;
     background: ta.pressed ? #1e1e2e : (ta.has-hover ? #313244 : #181825);
-    
+
     Text {
         text: root.text;
         color: #cdd6f4;
@@ -55,7 +55,7 @@ component DarkButton inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-    
+
     ta := TouchArea {
         clicked => { root.clicked() }
     }
@@ -64,11 +64,11 @@ component DarkButton inherits Rectangle {
 component ModernButton inherits Rectangle {
     in property <string> text;
     callback clicked();
-    
+
     height: 40px;
     border-radius: 8px;
     background: ta.pressed ? #74c7ec : (ta.has-hover ? #89dceb : #89b4fa);
-    
+
     Text {
         text: root.text;
         color: #11111b;
@@ -77,7 +77,7 @@ component ModernButton inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-    
+
     ta := TouchArea {
         clicked => { root.clicked() }
     }
@@ -87,13 +87,13 @@ component SmoothSpinner inherits Rectangle {
     width: 30px;
     height: 30px;
     property <angle> rot: 0deg;
-    
+
     Timer {
         interval: 16ms;
         running: true;
         triggered => { root.rot += 8deg; }
     }
-    
+
     Image {
         width: 100%;
         height: 100%;
@@ -125,19 +125,19 @@ component SyncCodeDialog inherits Rectangle {
     in-out property <string> input_code: "";
     callback confirmed(string);
     callback cancelled();
-    
+
     width: 320px;
     height: 180px;
     background: #1e1e2e;
     border-radius: 12px;
     border-width: 1px;
     border-color: #313244;
-    
+
     VerticalLayout {
         padding: 20px;
         spacing: 15px;
         alignment: center;
-        
+
         Text {
             text: "Sync Kodunu Girin";
             color: #cdd6f4;
@@ -145,30 +145,34 @@ component SyncCodeDialog inherits Rectangle {
             font-weight: 600;
             horizontal-alignment: center;
         }
-        
+
         Rectangle {
             height: 40px;
-            background: #1e1e2e;
+            background: #181825;
             border-radius: 6px;
             border-width: 1px;
-            border-color: ta_input.pressed ? #89b4fa : #313244;
-            
-            TextInput {
-                width: 100%;
-                height: 100%;
-                text: root.input_code;
+            border-color: input.has-focus ? #89b4fa : #313244;
+
+            // Kutunun her yerine tıklayınca odak versin (TextInput'un ALTINDA kalır)
+            TouchArea {
+                clicked => { input.focus(); }
+            }
+
+            input := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                height: parent.height;
+                text <=> root.input_code;
                 color: #cdd6f4;
                 font-size: 0.95rem;
                 vertical-alignment: center;
                 horizontal-alignment: center;
                 single-line: true;
-                
+
                 accepted => { root.confirmed(self.text); }
-                edited => { root.input_code = self.text; }
             }
-            ta_input := TouchArea {}
         }
-        
+
         HorizontalLayout {
             spacing: 15px;
             alignment: center;
@@ -200,7 +204,7 @@ export component MainWindow inherits Window {
     in-out property <[SyncFolderItem]> sync_folders: [];
     in-out property <[SyncFolderItem]> cloud_folders: [];
     in-out property <bool> is_syncing: false;
-    
+
     // UI state
     in-out property <bool> show_connect_dialog: false;
     in-out property <bool> show_my_syncs: false;
@@ -294,7 +298,7 @@ export component MainWindow inherits Window {
             Rectangle { height: 1px; background: #313244; }
         }
 
-                // ── Main Content Area ────────────────────────────────────
+        // ── Main Content Area ────────────────────────────────────
         Rectangle {
             vertical-stretch: 1;
             clip: true;
@@ -306,7 +310,7 @@ export component MainWindow inherits Window {
                 width: parent.width; height: parent.height; alignment: center;
                 x: (!is_logged_in && !is_logging_in) ? 0 : -self.width;
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
-                
+
                 // --- Logo ---
                 spacing: 8px;
                 AppLogo { }
@@ -348,7 +352,7 @@ export component MainWindow inherits Window {
                 width: parent.width; height: parent.height; alignment: center;
                 x: (is_logged_in && !show_connect_dialog && !show_my_syncs && active_sync_code == "") ? 0 : (show_connect_dialog || show_my_syncs || active_sync_code != "" ? -self.width : self.width);
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
-                
+
                 // --- Logo ---
                 spacing: 8px;
                 AppLogo { }
@@ -398,18 +402,20 @@ export component MainWindow inherits Window {
                 width: parent.width; height: parent.height; alignment: center;
                 x: (is_logged_in && active_sync_code != "") ? 0 : self.width;
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
-                
+
                 spacing: 20px;
-                
+
                 HorizontalLayout {
                     alignment: center;
-                    SmoothSpinner { width: 50px; height: 50px; }
+                    if root.is_syncing: SmoothSpinner { width: 50px; height: 50px; }
+                    if !root.is_syncing: Text { text: "✓"; font-size: 2.5rem; color: #a6e3a1; horizontal-alignment: center; }
                 }
 
                 Text { text: root.active_sync_folder; font-size: 1.4rem; font-weight: 700; color: #cdd6f4; horizontal-alignment: center; }
                 Text { text: root.status_text; font-size: 0.95rem; color: #a6adc8; horizontal-alignment: center; }
 
-                VerticalLayout {
+                // Kopyala butonu sadece kod hazırsa ve eşitleme bittiyse görünür
+                if !root.is_syncing && root.active_sync_code != "pending" && root.active_sync_code != "": VerticalLayout {
                     alignment: center;
                     spacing: 5px;
                     HorizontalLayout {
@@ -454,9 +460,9 @@ export component MainWindow inherits Window {
                 width: parent.width; height: parent.height;
                 x: (is_logged_in && show_my_syncs) ? 0 : self.width;
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
-                
+
                 spacing: 10px;
-                
+
                 if root.sync_folders.length == 0: VerticalLayout {
                     alignment: center;
                     vertical-stretch: 1;
@@ -516,10 +522,10 @@ export component MainWindow inherits Window {
                             background: #313244;
                             border-radius: 8px;
                             height: 64px;
-                            
+
                             ta_folder := TouchArea {
-                                clicked => { 
-                                    root.active_sync_code = folder.id; 
+                                clicked => {
+                                    root.active_sync_code = folder.id;
                                     root.active_sync_folder = folder.name;
                                     root.show_my_syncs = false;
                                 }
@@ -540,7 +546,7 @@ export component MainWindow inherits Window {
                                     alignment: center;
                                     spacing: 8px;
                                     if folder.is_syncing: SmoothSpinner { width: 16px; height: 16px; }
-                                    
+
                                     VerticalLayout {
                                         alignment: center;
                                         Rectangle {
@@ -585,18 +591,20 @@ export component MainWindow inherits Window {
                 width: parent.width; height: parent.height; alignment: center;
                 x: (is_logged_in && show_connect_dialog) ? 0 : self.width;
                 animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
-                
+
                 spacing: 10px;
 
                 HorizontalLayout {
                     alignment: center;
-                    SyncCodeDialog {
+                    sync_dialog := SyncCodeDialog {
                         confirmed(code) => {
-                        root.show_connect_dialog = false;
-                        root.connect_to_sync(code);
-                    }
-                    cancelled => {
                             root.show_connect_dialog = false;
+                            root.connect_to_sync(code);
+                            sync_dialog.input_code = "";
+                        }
+                        cancelled => {
+                            root.show_connect_dialog = false;
+                            sync_dialog.input_code = "";
                         }
                     }
                 }
@@ -639,7 +647,7 @@ export component MainWindow inherits Window {
             HorizontalLayout {
                 alignment: end;
                 spacing: 8px;
-                
+
                 if !root.is_logged_in : HorizontalLayout {
                     spacing: 3px;
                     alignment: center;
@@ -665,10 +673,10 @@ export component MainWindow inherits Window {
                 }
                 Text {
                     text: root.is_logged_in
-                        ? (root.sync_folders.length > 0
-                            ? (root.is_syncing ? "Eşitleniyor" : "Drive Bağlı")
-                            : "Drive Bağlı")
-                        : (root.is_logging_in ? "Bağlanıyor..." : "Giriş Bekleniyor");
+                    ? (root.sync_folders.length > 0
+                    ? (root.is_syncing ? "Eşitleniyor" : "Drive Bağlı")
+                    : "Drive Bağlı")
+                    : (root.is_logging_in ? "Bağlanıyor..." : "Giriş Bekleniyor");
                     color: #a6adc8;
                     font-size: 0.85rem;
                     vertical-alignment: center;
@@ -685,7 +693,7 @@ export component MainWindow inherits Window {
         opacity: root.show_quit_dialog ? 1.0 : 0.0;
         visible: self.opacity > 0.01;
         animate opacity { duration: 200ms; easing: ease-out; }
-        
+
         TouchArea {}
 
         Rectangle {

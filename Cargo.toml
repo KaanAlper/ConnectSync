@@ -1,6 +1,6 @@
 [package]
 name = "connect_sync"
-version = ""
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
@@ -48,3 +48,9 @@ slint-build = "1.18.0"
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+strip = true
