@@ -104,5 +104,12 @@
   "missing_title": "Folder Not Found",
   "missing_body": "The folder '{name}' was deleted from Google Drive or access was revoked.",
   "missing_upload": "Re-Upload",
-  "missing_remove": "Remove Sync"
+  "missing_remove": "Remove Sync",
+  "edit_sync_title": "Edit Sync",
+  "edit_name": "Folder Name:",
+  "edit_path": "Local Path:",
+  "edit_change_path": "Change",
+  "edit_rename_drive": "Rename on Drive too",
+  "edit_save": "Save",
+  "edit_sync_btn": "Edit"
 }

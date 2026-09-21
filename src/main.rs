@@ -541,10 +541,15 @@ fn setup_ui(
         let ui_weak_add = ui_weak_add.clone();
         let app_state_add = app_state_add.clone();
         std::thread::spawn(move || {
-            let Some(path) = FileDialog::new()
+            let Some(parent_path) = FileDialog::new()
                 .set_title(i18n::t("pick_download_folder"))
                 .pick_folder()
             else { return };
+            
+            // Seçilen klasörün içine buluttaki isimle yeni bir klasör ekle
+            let path = parent_path.join(&cloud_name);
+            let _ = std::fs::create_dir_all(&path); // Klasörü diskte yarat
+
             let _ = slint::invoke_from_event_loop(move || {
 
         let mut config = sync_core::config::AppConfig::load();
@@ -562,7 +567,7 @@ fn setup_ui(
             .file_name()
             .and_then(|n| n.to_str())
             .map(|n| n.to_string())
-            .unwrap_or(cloud_name);
+            .unwrap_or(cloud_name.clone());
 
         config.sync_folders.push(sync_core::config::SyncFolder {
             id: code.clone(),
@@ -579,6 +584,7 @@ fn setup_ui(
         update_status(&ui_weak_add, &app_state_add, &code, &i18n::t("status_pulling"), true);
         if let Some(ui) = ui_weak_add.upgrade() {
             update_ui_folders(&ui, &app_state_add);
+            ui.invoke_show_edit_sync(code.clone().into(), cloud_name.clone().into(), path.to_string_lossy().to_string().into());
         }
         start_sync_loop(ui_weak_add.clone(), app_state_add.clone(), code, path);
             });
@@ -640,6 +646,81 @@ fn setup_ui(
 
     ui.on_remove_sync_folder(move |id| {
         remove_local_sync(&ui_remove, &app_state_remove, id.as_str());
+    });
+
+    // ── Edit Sync ──────────────────────────────────────────────────────────
+    let ui_weak_edit_pick = ui.as_weak();
+    ui.on_edit_pick_path(move |_id| {
+        let ui_weak = ui_weak_edit_pick.clone();
+        std::thread::spawn(move || {
+            let Some(path) = rfd::FileDialog::new()
+                .set_title(i18n::t("pick_sync_folder"))
+                .pick_folder()
+            else { return };
+            
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_edit_sync_path(path.to_string_lossy().to_string().into());
+                }
+            });
+        });
+    });
+
+    let ui_weak_edit_save = ui.as_weak();
+    let app_state_edit = app_state.clone();
+    ui.on_edit_sync_save(move |id, name, path, rename_on_drive| {
+        let id_str = id.to_string();
+        let name_str = name.to_string();
+        let path_str = path.to_string();
+        
+        let mut config = sync_core::config::AppConfig::load();
+        
+        let mut old_path = String::new();
+        let mut do_rename = false;
+        let mut code = String::new();
+        
+        if let Some(folder) = config.sync_folders.iter_mut().find(|f| f.id == id_str) {
+            old_path = folder.path.clone();
+            folder.name = name_str.clone();
+            folder.path = path_str.clone();
+            code = folder.code.clone();
+            do_rename = rename_on_drive;
+        }
+        
+        let _ = config.save();
+        
+        if old_path != "" {
+            if do_rename {
+                let name_clone = name_str.clone();
+                tokio::spawn(async move {
+                    if let Ok(token) = sync_core::auth::get_drive_token(false).await {
+                        if let Ok(drive) = sync_core::drive::DriveClient::new(token, None) {
+                            if let Some((fid, _)) = drive_missing::parse_code(&code) {
+                                let _ = drive.set_folder_display_name(fid, &name_clone).await;
+                            }
+                        }
+                    }
+                });
+            }
+            
+            if old_path != path_str {
+                // Yol değiştiyse eski döngüyü kapatıp yenisini başlat
+                let app_state_clone = app_state_edit.clone();
+                let id_clone = id_str.clone();
+                
+                let mut st = app_state_clone.lock().unwrap();
+                if let Some(tx) = st.tasks.remove(&id_clone) {
+                    let _ = tx.send(()); 
+                }
+                drop(st);
+                
+                start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id_str.clone(), std::path::PathBuf::from(path_str));
+            }
+        }
+        
+        if let Some(ui) = ui_weak_edit_save.upgrade() {
+            update_ui_folders(&ui, &app_state_edit);
+        }
     });
 
     let ui_weak_manual = ui.as_weak();
@@ -862,10 +943,14 @@ fn setup_ui(
         let ui_weak = ui_weak.clone();
         let app_state_connect = app_state_connect.clone();
         std::thread::spawn(move || {
-            let Some(path) = FileDialog::new()
+            let Some(parent_path) = FileDialog::new()
                 .set_title(i18n::t("pick_download_folder"))
                 .pick_folder()
             else { return };
+            
+            // Seçilen klasörün içine buluttaki isimle yeni bir klasör ekle
+            let path = parent_path;
+
             let _ = slint::invoke_from_event_loop(move || {
 
         let folder_name = path.file_name()

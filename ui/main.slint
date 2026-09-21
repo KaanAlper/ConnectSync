@@ -6,6 +6,15 @@ export global Tr {
     out property <string> missing_title: "Klasör Bulunamadı";
     out property <string> missing_upload: "Yeniden Yükle";
     out property <string> missing_remove: "Bağlantıyı Kaldır";
+
+    // Edit Sync
+    out property <string> edit_sync_title: "Senkronizasyonu Düzenle";
+    out property <string> edit_name: "Klasör Adı:";
+    out property <string> edit_path: "Yerel Konum:";
+    out property <string> edit_change_path: "Değiştir";
+    out property <string> edit_rename_drive: "Drive'da da ismini değiştir";
+    out property <string> edit_save: "Kaydet";
+    out property <string> edit_sync_btn: "Düzenle";
     in property <string> settings;
     in property <string> section_this_pc: "Bu bilgisayarda aktif olarak eşitlenenler";
     in property <string> section_on_drive: "Drive'da olup bu bilgisayara eklenmemiş olanlar";
@@ -356,6 +365,12 @@ export component MainWindow inherits Window {
     in-out property <bool> show_delete_dialog: false;
     in-out property <bool> show_missing_dialog: false;
     in-out property <string> missing_sync_id: "";
+
+    in-out property <bool> show_edit_dialog: false;
+    in-out property <string> edit_sync_id: "";
+    in-out property <string> edit_sync_name: "";
+    in-out property <string> edit_sync_path: "";
+    in-out property <bool> edit_rename_on_drive: true;
     in-out property <string> missing_sync_body: "";
 
     in-out property <string> delete_target_id: "";
@@ -389,6 +404,16 @@ export component MainWindow inherits Window {
     callback missing_reupload(string);
     callback missing_remove(string);
     callback missing_upload(string);
+    callback edit_sync_save(string, string, string, bool);
+    callback edit_pick_path(string);
+    callback show_edit_sync(string, string, string);
+    show_edit_sync(id, name, path) => {
+        root.edit_sync_id = id;
+        root.edit_sync_name = name;
+        root.edit_sync_path = path;
+        root.edit_rename_on_drive = false;
+        root.show_edit_dialog = true;
+    }
 
     callback watch_changes_toggled(bool);
     callback auto_gc_toggled(bool);
@@ -2081,6 +2106,120 @@ export component MainWindow inherits Window {
                             clicked => { 
                                 root.missing_remove(root.missing_sync_id); 
                                 root.show_missing_dialog = false; 
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Edit Sync Modal Dialog ─────────────────────────
+        if show_edit_dialog: TouchArea {
+            width: 100%;
+            height: 100%;
+            scroll-event(event) => { return accept; }
+
+            Rectangle {
+                width: 100%; height: 100%; background: Theme.scrim_strong;
+                opacity: root.show_edit_dialog ? 1.0 : 0.0;
+                animate opacity { duration: 200ms; easing: ease-out; }
+            }
+
+            Rectangle {
+                width: 380px;
+                height: edit_content.preferred-height;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                background: Theme.surface;
+                border-radius: 16px;
+                border-width: 1px;
+                border-color: Theme.border_strong;
+                drop-shadow-blur: 15px;
+                drop-shadow-color: Theme.shadow;
+
+                edit_content := VerticalLayout {
+                    padding: 24px;
+                    spacing: 16px;
+
+                    Text { text: Tr.edit_sync_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+
+                    // Name
+                    Text { text: Tr.edit_name; font-size: 0.9rem; color: Theme.text_muted; }
+                    Rectangle {
+                        height: 40px;
+                        background: Theme.bg;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Theme.border_strong;
+                        TextInput {
+                            text <=> root.edit_sync_name;
+                            color: Theme.text;
+                            font-size: 1rem;
+                            vertical-alignment: center;
+                            x: 12px;
+                            width: parent.width - 24px;
+                        }
+                    }
+
+                    // Path
+                    Text { text: Tr.edit_path; font-size: 0.9rem; color: Theme.text_muted; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            height: 40px;
+                            background: Theme.bg;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Theme.border_strong;
+                            Text {
+                                text: root.edit_sync_path;
+                                color: Theme.text_muted;
+                                font-size: 0.9rem;
+                                vertical-alignment: center;
+                                x: 12px;
+                                width: parent.width - 24px;
+                                overflow: elide;
+                            }
+                        }
+                        DarkButton {
+                            text: Tr.edit_change_path;
+                            width: 80px;
+                            clicked => { root.edit_pick_path(root.edit_sync_id); }
+                        }
+                    }
+
+                    // Rename on Drive toggle
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        Switch {
+                            checked <=> root.edit_rename_on_drive;
+                        }
+                        Text {
+                            text: Tr.edit_rename_drive;
+                            color: Theme.text;
+                            font-size: 0.95rem;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle { height: 8px; } // spacer
+
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: center;
+                        height: 40px;
+                        DarkButton {
+                            text: Tr.cancel;
+                            width: 120px;
+                            clicked => { root.show_edit_dialog = false; }
+                        }
+                        ModernButton {
+                            text: Tr.edit_save;
+                            width: 120px;
+                            clicked => { 
+                                root.edit_sync_save(root.edit_sync_id, root.edit_sync_name, root.edit_sync_path, root.edit_rename_on_drive); 
+                                root.show_edit_dialog = false; 
                             }
                         }
                     }

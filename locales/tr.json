@@ -104,5 +104,12 @@
   "missing_title": "Klasör Bulunamadı",
   "missing_body": "'{name}' klasörü Google Drive'dan silinmiş veya erişiminiz iptal edilmiş.",
   "missing_upload": "Yeniden Yükle",
-  "missing_remove": "Bağlantıyı Kaldır"
+  "missing_remove": "Bağlantıyı Kaldır",
+  "edit_sync_title": "Senkronizasyonu Düzenle",
+  "edit_name": "Klasör Adı:",
+  "edit_path": "Yerel Konum:",
+  "edit_change_path": "Değiştir",
+  "edit_rename_drive": "Drive'da da ismini değiştir",
+  "edit_save": "Kaydet",
+  "edit_sync_btn": "Düzenle"
 }
