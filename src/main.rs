@@ -68,6 +68,19 @@ fn apply_language(ui: &MainWindow, lang: &str) {
         ($($setter:ident => $key:literal),* $(,)?) => { $( tr.$setter(tr_ss($key)); )* };
     }
     set_all!(
+        set_app_subtitle => "app_subtitle",
+        set_missing_title => "missing_title",
+        set_missing_upload => "missing_upload",
+        set_missing_remove => "missing_remove",
+        set_edit_sync_title => "edit_sync_title",
+        set_edit_name => "edit_name",
+        set_edit_path => "edit_path",
+        set_edit_change_path => "edit_change_path",
+        set_edit_rename_drive => "edit_rename_drive",
+        set_edit_save => "edit_save",
+        set_edit_sync_btn => "edit_sync_btn",
+        set_create_new_sync_title => "create_new_sync_title",
+        set_can_others_write => "can_others_write",
         set_settings => "settings",
         set_my_syncs => "my_syncs",
         set_find_from_cloud => "find_from_cloud",

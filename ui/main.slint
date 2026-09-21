@@ -3,20 +3,20 @@ import { Theme } from "theme.slint";
 
 // Çeviri metinleri — değerler Rust tarafında (i18n.rs + locales/*.json) doldurulur
 export global Tr {
-    out property <string> missing_title: "Klasör Bulunamadı";
-    out property <string> missing_upload: "Yeniden Yükle";
-    out property <string> missing_remove: "Bağlantıyı Kaldır";
+    in property <string> missing_title;
+    in property <string> missing_upload;
+    in property <string> missing_remove;
 
     // Edit Sync
-    out property <string> edit_sync_title: "Senkronizasyonu Düzenle";
-    out property <string> edit_name: "Klasör Adı:";
-    out property <string> edit_path: "Yerel Konum:";
-    out property <string> edit_change_path: "Değiştir";
-    out property <string> edit_rename_drive: "Drive'da da ismini değiştir";
-    out property <string> edit_save: "Kaydet";
-    out property <string> edit_sync_btn: "Düzenle";
-    out property <string> create_new_sync_title: "Yeni Senkronizasyon";
-    out property <string> can_others_write: "Başkaları değişiklik yapabilsin";
+    in property <string> edit_sync_title;
+    in property <string> edit_name;
+    in property <string> edit_path;
+    in property <string> edit_change_path;
+    in property <string> edit_rename_drive;
+    in property <string> edit_save;
+    in property <string> edit_sync_btn;
+    in property <string> create_new_sync_title;
+    in property <string> can_others_write;
     in property <string> settings;
     in property <string> section_this_pc: "Bu bilgisayarda aktif olarak eşitlenenler";
     in property <string> section_on_drive: "Drive'da olup bu bilgisayara eklenmemiş olanlar";
@@ -48,6 +48,7 @@ export global Tr {
     in property <string> quit;
     in property <string> section_startup;
     in property <string> autostart;
+    in property <string> app_subtitle;
     in property <string> start_in_tray;
     in property <string> section_performance;
     in property <string> threads_label;
@@ -675,7 +676,7 @@ export component MainWindow inherits Window {
                     color: Theme.text_strong;
                 }
                 Text {
-                    text: "Serverless Folder Sync";
+                    text: Tr.app_subtitle;
                     font-size: 1.1rem;
                     color: Theme.text_muted;
                     horizontal-alignment: center;
@@ -723,7 +724,7 @@ export component MainWindow inherits Window {
                     color: Theme.text_strong;
                 }
                 Text {
-                    text: "Serverless Folder Sync";
+                    text: Tr.app_subtitle;
                     font-size: 1.1rem;
                     color: Theme.text_muted;
                     horizontal-alignment: center;
@@ -2213,7 +2214,7 @@ export component MainWindow inherits Window {
                             checked <=> root.edit_rename_on_drive;
                         }
                         Text {
-                            text: Tr.edit_rename_drive;
+    in property <string> edit_rename_drive;
                             color: Theme.text;
                             font-size: 0.95rem;
                             vertical-alignment: center;

@@ -113,5 +113,6 @@
   "edit_save": "Save",
   "edit_sync_btn": "Edit",
   "create_new_sync_title": "New Sync",
-  "can_others_write": "Others can edit"
+  "can_others_write": "Others can edit",
+  "app_subtitle": "Serverless Folder Sync"
 }

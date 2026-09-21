@@ -113,5 +113,6 @@
   "edit_save": "Kaydet",
   "edit_sync_btn": "Düzenle",
   "create_new_sync_title": "Yeni Senkronizasyon",
-  "can_others_write": "Başkaları değişiklik yapabilsin"
+  "can_others_write": "Başkaları değişiklik yapabilsin",
+  "app_subtitle": "Sunucusuz Klasör Senkronizasyonu"
 }
