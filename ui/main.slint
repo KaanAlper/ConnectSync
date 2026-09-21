@@ -1633,7 +1633,9 @@ export component MainWindow inherits Window {
 
         
         // ── Settings Screen ─────────────────────────
-        if show_settings: VerticalLayout {
+        // Yalnızca oturum açıkken: aksi halde giriş ekranına dönüldüğünde (ör. yetki değişince) Ayarlar,
+        // giriş ekranının üstünde kalırdı.
+        if is_logged_in && show_settings: VerticalLayout {
             spacing: 16px;
             padding: 30px;
             padding-bottom: 55px;

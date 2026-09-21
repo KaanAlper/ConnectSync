@@ -87,10 +87,18 @@ fn stop_all_syncs(app_state: &Arc<Mutex<AppState>>) {
     state.cloud_items.clear();
 }
 
-/// Arayüzü giriş ekranına döndürür (belirteçlere dokunmaz).
+/// Arayüzü giriş ekranına döndürür (belirteçlere dokunmaz). Açık ekranlar ve popup'lar kapatılır:
+/// aksi halde (ör. Ayarlar'da yetki anahtarı değişince) giriş ekranının üstünde kalırlardı ve tekrar
+/// giriş yapınca eski durumda geri gelirlerdi.
 fn reset_ui_to_login(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppState>>) {
     if let Some(ui) = ui_weak.upgrade() {
         update_ui_folders(&ui, app_state);
+        ui.set_show_settings(false);
+        ui.set_show_my_syncs(false);
+        ui.set_show_connect_dialog(false);
+        ui.set_show_edit_dialog(false);
+        ui.set_show_delete_dialog(false);
+        ui.set_show_missing_dialog(false);
         ui.set_is_logged_in(false);
         ui.set_active_sync_code("".into());
         ui.set_active_hidden(false);
