@@ -114,5 +114,6 @@
   "edit_sync_btn": "Düzenle",
   "create_new_sync_title": "Yeni Senkronizasyon",
   "can_others_write": "Başkaları değişiklik yapabilsin",
-  "app_subtitle": "Sunucusuz Klasör Senkronizasyonu"
+  "app_subtitle": "Sunucusuz Klasör Senkronizasyonu",
+  "new_drive_folder_name": "Drive Klasör Adı:"
 }

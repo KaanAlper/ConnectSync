@@ -100,5 +100,9 @@
   "update_failed_title": "更新失败",
   "update_latest_title": "已是最新版本",
   "update_latest_body": "ConnectSync {cur} 已是最新版本。",
-  "update_dev_note": "（开发版本：文件未被替换，重启后仍是同一版本。）"
+  "update_dev_note": "（开发版本：文件未被替换，重启后仍是同一版本。）",
+  "app_subtitle": "无服务器文件夹同步",
+  "create_new_sync_title": "新同步",
+  "can_others_write": "允许其他人进行更改",
+  "new_drive_folder_name": "Drive文件夹名称:"
 }

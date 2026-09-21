@@ -100,5 +100,9 @@
   "update_failed_title": "Update fehlgeschlagen",
   "update_latest_title": "Alles aktuell",
   "update_latest_body": "ConnectSync {cur} ist die neueste Version.",
-  "update_dev_note": "(Entwicklungs-Build: Dateien wurden nicht ersetzt; ein Neustart öffnet dieselbe Version.)"
+  "update_dev_note": "(Entwicklungs-Build: Dateien wurden nicht ersetzt; ein Neustart öffnet dieselbe Version.)",
+  "app_subtitle": "Serverlose Ordnersynchronisierung",
+  "create_new_sync_title": "Neue Synchronisation",
+  "can_others_write": "Andere können Änderungen vornehmen",
+  "new_drive_folder_name": "Drive-Ordnername:"
 }

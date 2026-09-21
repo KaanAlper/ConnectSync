@@ -100,5 +100,9 @@
   "update_failed_title": "업데이트 실패",
   "update_latest_title": "최신 버전입니다",
   "update_latest_body": "ConnectSync {cur}은(는) 최신 버전입니다.",
-  "update_dev_note": "(개발 빌드: 파일이 교체되지 않았으며 다시 시작해도 같은 버전이 열립니다.)"
+  "update_dev_note": "(개발 빌드: 파일이 교체되지 않았으며 다시 시작해도 같은 버전이 열립니다.)",
+  "app_subtitle": "서버리스 폴더 동기화",
+  "create_new_sync_title": "새 동기화",
+  "can_others_write": "다른 사람도 변경 가능",
+  "new_drive_folder_name": "Drive 폴더 이름:"
 }

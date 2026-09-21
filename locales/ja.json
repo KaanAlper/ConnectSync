@@ -100,5 +100,9 @@
   "update_failed_title": "アップデートに失敗しました",
   "update_latest_title": "最新バージョンです",
   "update_latest_body": "ConnectSync {cur} は最新バージョンです。",
-  "update_dev_note": "（開発ビルド：ファイルは置き換えられていません。再起動しても同じバージョンが開きます。）"
+  "update_dev_note": "（開発ビルド：ファイルは置き換えられていません。再起動しても同じバージョンが開きます。）",
+  "app_subtitle": "サーバーレスフォルダ同期",
+  "create_new_sync_title": "新しい同期",
+  "can_others_write": "他のユーザーも変更可能",
+  "new_drive_folder_name": "Driveフォルダ名:"
 }

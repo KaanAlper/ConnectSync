@@ -100,5 +100,9 @@
   "update_failed_title": "Error al actualizar",
   "update_latest_title": "Estás al día",
   "update_latest_body": "ConnectSync {cur} es la última versión.",
-  "update_dev_note": "(Compilación de desarrollo: no se reemplazaron archivos; al reiniciar se abre la misma versión.)"
+  "update_dev_note": "(Compilación de desarrollo: no se reemplazaron archivos; al reiniciar se abre la misma versión.)",
+  "app_subtitle": "Sincronización de carpetas sin servidor",
+  "create_new_sync_title": "Nueva Sincronización",
+  "can_others_write": "Otros pueden hacer cambios",
+  "new_drive_folder_name": "Nombre de la carpeta de Drive:"
 }

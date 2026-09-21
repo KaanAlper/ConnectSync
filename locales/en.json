@@ -113,6 +113,7 @@
   "edit_save": "Save",
   "edit_sync_btn": "Edit",
   "create_new_sync_title": "New Sync",
-  "can_others_write": "Others can edit",
-  "app_subtitle": "Serverless Folder Sync"
+  "can_others_write": "Others can make changes",
+  "app_subtitle": "Serverless Folder Sync",
+  "new_drive_folder_name": "Drive Folder Name:"
 }
