@@ -1030,6 +1030,32 @@ fn setup_ui(
         }
     });
 
+    let app_state_pause = app_state.clone();
+    let ui_weak_pause = ui.as_weak();
+    ui.on_pause_sync_for_dialog(move |id| {
+        let id_str = id.to_string();
+        if let Some(tx) = app_state_pause.lock().unwrap().tasks.remove(&id_str) {
+            let _ = tx.send(()); // Görevi durdur
+        }
+        if let Some(ui) = ui_weak_pause.upgrade() {
+            ui.set_status_text(tr_ss("status_paused"));
+            ui.set_is_syncing(false);
+        }
+    });
+
+    let app_state_resume = app_state.clone();
+    let ui_weak_resume = ui.as_weak();
+    ui.on_resume_sync_after_dialog(move |id| {
+        let id_str = id.to_string();
+        let path = {
+            let cfg = sync_core::config::AppConfig::load();
+            cfg.sync_folders.iter().find(|f| f.id == id_str).map(|f| f.path.clone())
+        };
+        if let Some(p) = path {
+            start_sync_loop(ui_weak_resume.clone(), app_state_resume.clone(), id_str, std::path::PathBuf::from(p));
+        }
+    });
+
     // ── Pencere Kontrolleri ───────────────────────────────────────────────
     // Pencere yok edilmez, sadece gizlenir (tray'e iner); tray'den tekrar aynı pencere gösterilir.
     let ui_weak_min = ui.as_weak();

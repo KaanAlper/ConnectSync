@@ -409,6 +409,8 @@ export component MainWindow inherits Window {
     callback confirm_delete_sync(string, bool);
     callback missing_reupload(string);
     callback missing_remove(string);
+    callback pause_sync_for_dialog(string);
+    callback resume_sync_after_dialog(string);
     callback missing_upload(string);
     callback edit_sync_save(string, string, string, bool);
     callback new_sync_save(string, string, bool);
@@ -863,7 +865,7 @@ export component MainWindow inherits Window {
                     spacing: 15px;
                     alignment: center;
                     ModernButton { text: Tr.main_menu; width: 120px; clicked => { root.active_hidden = true; } }
-                    if root.is_syncing: DangerButton { text: Tr.stop_and_delete; width: 120px; clicked => { root.delete_target_id = root.active_sync_code; root.show_delete_dialog = true; } }
+                    if root.is_syncing: DangerButton { text: Tr.stop_and_delete; width: 120px; clicked => { root.delete_target_id = root.active_sync_code; root.pause_sync_for_dialog(root.active_sync_code); root.show_delete_dialog = true; } }
                     if !root.is_syncing: DangerButton { text: Tr.remove; width: 120px; clicked => { root.delete_target_id = root.active_sync_code; root.show_delete_dialog = true; } }
                 }
             }
