@@ -10,6 +10,6 @@ fn main() {
     if target_os == "windows" {
         let mut res = winres::WindowsResource::new();
         res.set_icon("assets/app_icon.ico");
-        res.compile().unwrap();
+        res.compile().expect("Windows ikon kaynağı derlenemedi: assets/app_icon.ico GERÇEK bir .ico olmalı (PNG'yi yeniden adlandırma)");
     }
 }
