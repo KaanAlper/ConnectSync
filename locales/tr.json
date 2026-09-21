@@ -121,5 +121,11 @@
     "err_edit_path_empty": "Yerel klasör yolu boş olamaz.",
     "err_path_not_dir": "Seçilen yol bir klasör değil.",
     "status_drive_missing": "Drive'daki veri silinmiş",
-    "err_reupload": "Yeniden yükleme başarısız: {e}"
+    "err_reupload": "Yeniden yükleme başarısız: {e}",
+    "err_code_unreachable": "Bu koda erişilemiyor. ConnectSync şu an yalnızca kendi Google hesabınla oluşturduğun klasörlere erişebilir; bu kod başka bir hesaba ait ya da klasör Drive'dan silinmiş olabilir.",
+    "err_code_check": "Kod doğrulanamadı: {e}",
+    "err_signed_in_as": "Bağlı Google hesabı: {account}",
+    "err_code_trashed": "Bu klasör Drive'ın çöp kutusunda. Çöp kutusundan geri yüklersen bağlanabilirsin.",
+    "drive_access_label": "Başkalarıyla paylaşım için tüm Drive erişimi",
+    "drive_access_hint": "Kapalıyken yalnızca ConnectSync'in kendi oluşturduğu klasörlere erişilir; başka bir Google hesabının sync koduyla bağlanılamaz. Açınca uygulama Drive'ının tamamına erişebilir ve yeniden giriş yapmanı ister. Google'ın onayı gerekebilir."
 }

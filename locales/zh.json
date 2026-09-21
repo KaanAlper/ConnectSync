@@ -121,5 +121,11 @@
     "err_edit_path_empty": "本地文件夹路径不能为空。",
     "err_path_not_dir": "所选路径不是文件夹。",
     "status_drive_missing": "云端数据已被删除",
-    "err_reupload": "重新上传失败：{e}"
+    "err_reupload": "重新上传失败：{e}",
+    "err_code_unreachable": "无法访问此代码。ConnectSync 目前只能打开用你自己的 Google 账号创建的文件夹；此代码可能属于其他账号，或文件夹已从 Drive 中删除。",
+    "err_code_check": "无法验证代码：{e}",
+    "err_signed_in_as": "已登录的 Google 账号：{account}",
+    "err_code_trashed": "此文件夹在 Drive 回收站中。从回收站还原后即可连接。",
+    "drive_access_label": "完整 Drive 访问权限（用于与他人共享）",
+    "drive_access_hint": "关闭时只能访问 ConnectSync 自己创建的文件夹，无法使用其他 Google 账号的同步代码连接。开启后应用可访问你的整个 Drive，并会要求重新登录。可能需要 Google 审核。"
 }

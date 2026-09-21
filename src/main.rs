@@ -78,6 +78,29 @@ fn rename_drive_folder(code: String, name: String) {
     });
 }
 
+/// Çalışan tüm sync döngülerini durdurur ve bulut listesini boşaltır.
+fn stop_all_syncs(app_state: &Arc<Mutex<AppState>>) {
+    let mut state = app_state.lock().unwrap();
+    for (_, tx) in state.tasks.drain() {
+        let _ = tx.send(());
+    }
+    state.cloud_items.clear();
+}
+
+/// Arayüzü giriş ekranına döndürür (belirteçlere dokunmaz).
+fn reset_ui_to_login(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppState>>) {
+    if let Some(ui) = ui_weak.upgrade() {
+        update_ui_folders(&ui, app_state);
+        ui.set_is_logged_in(false);
+        ui.set_active_sync_code("".into());
+        ui.set_active_hidden(false);
+        ui.set_active_sync_folder("".into());
+        ui.set_status_text("".into());
+        ui.set_error_text("".into());
+        ui.set_is_syncing(false);
+    }
+}
+
 /// Çeviriyi doğrudan Slint string'ine çevirir.
 fn tr_ss(key: &str) -> slint::SharedString {
     i18n::t(key).into()
@@ -159,6 +182,8 @@ fn apply_language(ui: &MainWindow, lang: &str) {
         set_network_popups_label => "network_popups_label",
         set_check_interval_label => "check_interval_label",
         set_dark_theme_label => "dark_theme_label",
+        set_drive_access_label => "drive_access_label",
+        set_drive_access_hint => "drive_access_hint",
         set_update_now => "update_now",
         set_ok => "ok",
     );
@@ -332,6 +357,7 @@ fn setup_ui(
     );
     ui.set_setting_threads(sync_core::config::clamp_threads(cfg.concurrent_threads).to_string().into());
     ui.set_setting_dark_theme(cfg.is_dark_theme());
+    ui.set_setting_drive_full(cfg.drive_full_access);
     // Pencere (yeniden) açılınca sürmekte olan güncelleme durumunu göstersin
     app_state.lock().unwrap().update.dirty = true;
 
@@ -499,6 +525,21 @@ fn setup_ui(
     });
 
     // Tema anında arayüzde uygulanır (Theme.dark çift yönlü bağlı); burada yalnızca kalıcı kılınır.
+    // Tüm Drive yetkisi: ayar kaydedilir; yeni profil için önbellekte belirteç yoksa (kapsam değişti)
+    // giriş ekranına dönülür. Belirteçler SİLİNMEZ: eski profile dönmek yeniden giriş istemez.
+    let app_state_access = app_state.clone();
+    let ui_weak_access = ui.as_weak();
+    ui.on_drive_access_toggled(move |full| {
+        log_failure(
+            "Drive yetki ayarı kaydedilemedi",
+            sync_core::config::AppConfig::update(|c| c.drive_full_access = full),
+        );
+        if !sync_core::auth::is_token_cached() {
+            stop_all_syncs(&app_state_access);
+            reset_ui_to_login(&ui_weak_access, &app_state_access);
+        }
+    });
+
     ui.on_theme_changed(move |dark| {
         let mut cfg = crate::sync_core::config::AppConfig::load();
         cfg.theme = crate::sync_core::config::theme_name(dark).to_string();
@@ -580,38 +621,7 @@ fn setup_ui(
     // ── Drive'daki bir sync'i bu bilgisayara ekle (klasörü kullanıcı seçer) ──
     let ui_weak_add = ui.as_weak();
     ui.on_add_cloud_sync(move |code, name| {
-        let code = code.to_string();
-        let cloud_name = name.to_string();
-        let ui_weak_add = ui_weak_add.clone();
-        std::thread::spawn(move || {
-            let Some(parent_path) = FileDialog::new()
-                .set_title(i18n::t("pick_download_folder"))
-                .pick_folder()
-            else { return };
-            
-            // Seçilen klasörün içine buluttaki isimle yeni bir klasör ekle
-            let path = parent_path.join(&cloud_name);
-            
-
-            let _ = slint::invoke_from_event_loop(move || {
-
-        let config = sync_core::config::AppConfig::load();
-        if config.sync_folders.iter().any(|f| drive_folder_id(&f.id) == drive_folder_id(&code)) {
-            return;
-        }
-        if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
-            if let Some(ui) = ui_weak_add.upgrade() {
-                show_error(&ui, tr_ss("err_folder_exists"));
-            }
-            return;
-        }
-
-        // Kaydetme işlemini edit_sync_save'e bırakıyoruz
-        if let Some(ui) = ui_weak_add.upgrade() {
-            ui.invoke_show_edit_sync(code.clone().into(), cloud_name.clone().into(), path.to_string_lossy().to_string().into());
-        }
-            });
-        });
+        pick_folder_and_edit(ui_weak_add.clone(), code.to_string(), name.to_string(), false);
     });
 
     // ── Silme dialogu onayı: bu PC'den kaldır (+ isteğe bağlı Drive'dan sil) ──
@@ -807,28 +817,9 @@ fn setup_ui(
     let ui_weak = ui.as_weak();
     let app_state_logout = app_state.clone();
     ui.on_logout_requested(move || {
-        // Varsa sync'i durdur
-        let mut state = app_state_logout.lock().unwrap();
-        for (_, tx) in state.tasks.drain() {
-            let _ = tx.send(());
-        }
-        state.cloud_items.clear();
-        drop(state);
-
+        stop_all_syncs(&app_state_logout);
         sync_core::auth::logout();
-        if let Some(ui) = ui_weak.upgrade() {
-            update_ui_folders(&ui, &app_state_logout);
-        }
-
-        if let Some(ui) = ui_weak.upgrade() {
-            ui.set_is_logged_in(false);
-            ui.set_active_sync_code("".into());
-            ui.set_active_hidden(false);
-            ui.set_active_sync_folder("".into());
-            ui.set_status_text("".into());
-            ui.set_error_text("".into());
-            ui.set_is_syncing(false);
-        }
+        reset_ui_to_login(&ui_weak, &app_state_logout);
     });
 
     // ── Yeni Sync Oluştur ─────────────────────────────────────────────────
@@ -982,34 +973,20 @@ fn setup_ui(
             return;
         }
 
+        // Önce kodu Drive'da doğrula ve klasörün GERÇEK adını getir; klasör seçtirme ondan sonra.
+        // Erişilemeyen bir kod için yerel sync oluşturulmaz (eskiden "Klasör" adıyla eklenip ilk
+        // eşitlemede kafa karıştırıcı bir "klasör bulunamadı" popup'ı çıkıyordu).
         let ui_weak = ui_weak.clone();
-        std::thread::spawn(move || {
-            let cloud_name = i18n::t("default_folder_name").to_string();
-            let ui_weak2 = ui_weak.clone();
-            let sync_code2 = sync_code.clone();
-            
-            let Some(parent_path) = rfd::FileDialog::new()
-                    .set_title(i18n::t("pick_download_folder"))
-                    .pick_folder()
-                else { return };
-                
-                // Seçilen klasörün içine buluttaki isimle yeni bir klasör ekle
-                let path = parent_path.join(&cloud_name);
-
-                let _ = slint::invoke_from_event_loop(move || {
-                    let config = sync_core::config::AppConfig::load();
-                    if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
-                        if let Some(ui) = ui_weak2.upgrade() {
-                            show_error(&ui, tr_ss("err_folder_exists"));
-                        }
-                        return;
+        tokio::spawn(async move {
+            let resolved = resolve_sync_code(&sync_code).await;
+            let _ = slint::invoke_from_event_loop(move || match resolved {
+                Ok(cloud_name) => pick_folder_and_edit(ui_weak, sync_code, cloud_name, true),
+                Err(msg) => {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        show_error(&ui, msg.as_str().into());
                     }
-                    
-                    // Kaydetme işlemini edit_sync_save'e bırakıyoruz
-                    if let Some(ui) = ui_weak2.upgrade() {
-                        ui.invoke_show_edit_sync(sync_code2.clone().into(), cloud_name.clone().into(), path.to_string_lossy().to_string().into());
-                    }
-                });
+                }
+            });
         });
     });
 
@@ -1754,6 +1731,97 @@ async fn main() -> Result<(), Box<dyn Error>> {
     slint::run_event_loop_until_quit().unwrap();
     Ok(())
 }
+/// Sync'i bu bilgisayara eklemek için üst klasörü seçtirir ve "Düzenle/Kaydet" popup'ını açar; sync,
+/// popup'ta Kaydet'e basılana kadar oluşturulmaz. Seçilen klasörün içine buluttaki adla bir alt klasör
+/// önerilir. Bu ad UZAKTAN geldiği (başka bir kullanıcının paylaştığı sync olabilir) için
+/// `safe_folder_name` ile temizlenir: aksi halde `../..` ya da `/etc` seçilen klasörün dışına çıkardı.
+/// Dosya seçici ayrı thread'de açılır (KDE'de arayüz "yanıt vermiyor" olmasın).
+/// `warn_if_present`: kod zaten ekliyse kullanıcıya söyle (kodu elle yazınca gerekir; bulut listesinde
+/// zaten eklenenler gösterilmez).
+fn pick_folder_and_edit(
+    ui_weak: slint::Weak<MainWindow>,
+    code: String,
+    cloud_name: String,
+    warn_if_present: bool,
+) {
+    std::thread::spawn(move || {
+        let Some(parent) = FileDialog::new()
+            .set_title(i18n::t("pick_download_folder"))
+            .pick_folder()
+        else {
+            return;
+        };
+        let subfolder = sync_core::config::safe_folder_name(&cloud_name, &i18n::t("default_folder_name"));
+        let path = parent.join(subfolder);
+
+        let _ = slint::invoke_from_event_loop(move || {
+            let config = sync_core::config::AppConfig::load();
+            let already_added = config
+                .sync_folders
+                .iter()
+                .any(|f| drive_folder_id(&f.id) == drive_folder_id(&code));
+            let path_in_use = config.sync_folders.iter().any(|f| std::path::Path::new(&f.path) == path);
+            if already_added || path_in_use {
+                if (path_in_use || warn_if_present)
+                    && let Some(ui) = ui_weak.upgrade()
+                {
+                    show_error(&ui, tr_ss("err_folder_exists"));
+                }
+                return;
+            }
+            // Kaydetme işlemini edit_sync_save'e bırakıyoruz
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.invoke_show_edit_sync(
+                    code.as_str().into(),
+                    cloud_name.as_str().into(),
+                    path.to_string_lossy().to_string().as_str().into(),
+                );
+            }
+        });
+    });
+}
+
+/// Bağlanmadan önce sync kodunu Drive'da doğrular ve klasörün gerçek görünen adını getirir.
+/// Döner: görünen ad ya da yerelleştirilmiş hata metni. Klasör silinmişse ya da bu hesap/uygulama onu
+/// göremiyorsa (`drive.file` kapsamı yalnızca uygulamanın oluşturduğu/açtığı dosyaları gösterir) hata
+/// döner ve sync eklenmez.
+async fn resolve_sync_code(code: &str) -> Result<String, String> {
+    let default_name = i18n::t("default_folder_name");
+    // Eski biçimli (öneksiz) kodda klasör kimliği yok, Drive'da doğrulanamaz: eski davranış.
+    let Some((folder_id, _)) = drive_missing::parse_code(code) else {
+        return Ok(default_name);
+    };
+    let token = sync_core::auth::get_drive_token(false)
+        .await
+        .map_err(|e| i18n::tf("err_drive_login_needed", &[("e", &e.to_string())]))?;
+    let drive = sync_core::drive::DriveClient::new(token, None).map_err(|e| e.to_string())?;
+    let info = drive
+        .folder_info(folder_id)
+        .await
+        .map_err(|e| i18n::tf("err_code_check", &[("e", &e.to_string())]))?;
+    match sync_core::drive::folder_access(info.as_ref()) {
+        sync_core::drive::FolderAccess::Available => {
+            let name = info.map(|i| i.display_name()).unwrap_or_default();
+            Ok(if name.trim().is_empty() { default_name } else { name })
+        }
+        sync_core::drive::FolderAccess::Trashed => Err(i18n::t("err_code_trashed")),
+        sync_core::drive::FolderAccess::NotVisible => {
+            // Hangi hesapla bağlı olduğunu göster: kod başka bir Google hesabına aitse (en olası sebep)
+            // kullanıcı bunu hemen görür. Alınamazsa mesaj yine de gösterilir.
+            let mut msg = i18n::t("err_code_unreachable");
+            match drive.signed_in_email().await {
+                Ok(Some(email)) => {
+                    msg.push('\n');
+                    msg.push_str(&i18n::tf("err_signed_in_as", &[("account", &email)]));
+                }
+                Ok(None) => {}
+                Err(e) => println!("Hesap e-postası alınamadı: {e}"),
+            }
+            Err(msg)
+        }
+    }
+}
+
 /// Arka plan taramasında hata sonrası ilk yeniden deneme bekleme süresi.
 const CLOUD_SCAN_RETRY_BASE: std::time::Duration = std::time::Duration::from_secs(30);
 

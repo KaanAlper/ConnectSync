@@ -121,5 +121,11 @@
     "err_edit_path_empty": "The local folder path cannot be empty.",
     "err_path_not_dir": "The selected path is not a folder.",
     "status_drive_missing": "Drive data was deleted",
-    "err_reupload": "Upload failed: {e}"
+    "err_reupload": "Upload failed: {e}",
+    "err_code_unreachable": "This code can't be reached. ConnectSync can currently only open folders created with your own Google account; this code may belong to another account, or the folder was deleted from Drive.",
+    "err_code_check": "Could not verify the code: {e}",
+    "err_signed_in_as": "Signed-in Google account: {account}",
+    "err_code_trashed": "This folder is in Drive's trash. Restore it from the trash and you can connect.",
+    "drive_access_label": "Full Drive access (to share with others)",
+    "drive_access_hint": "When off, only folders ConnectSync created itself are reachable; you can't connect with another Google account's sync code. When on, the app can access your entire Drive and asks you to sign in again. Google approval may be required."
 }

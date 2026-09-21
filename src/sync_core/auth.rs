@@ -5,6 +5,7 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use yup_oauth2::storage::{TokenStorage, TokenStorageError, TokenInfo};
 use keyring::Entry;
+use connectsync_core::scopes::DriveAccess;
 
 #[derive(Copy, Clone)]
 struct CustomBrowserDelegate {
@@ -32,12 +33,27 @@ impl InstalledFlowDelegate for CustomBrowserDelegate {
     }
 }
 
-// Kapsam listesi değiştiği için (drive.appdata eklendi) eski token'lar geçersiz;
-// yeni bir anahtar adı kullanarak tek seferlik yeniden girişi zorluyoruz.
-const TOKEN_ENTRY: &str = "google_token_v2";
+// Her yetki profilinin belirteci AYRI anahtarda saklanır. Tek anahtar kullanılsaydı kapsam değiştiğinde
+// (ör. drive.file -> drive) eski, dar belirteç yeniden kullanılır ve API yine "dosya yok" derdi.
+// `AppOnly` anahtarı eskisiyle aynı kalır: mevcut kullanıcılar yeniden giriş yapmaz.
 const OLD_TOKEN_ENTRY: &str = "google_token";
 
-struct KeyringTokenStorage;
+/// Yetki profiline karşılık gelen anahtarlık kaydı adı.
+fn token_entry(access: DriveAccess) -> &'static str {
+    match access {
+        DriveAccess::AppOnly => "google_token_v2",
+        DriveAccess::Full => "google_token_v3_full",
+    }
+}
+
+/// Ayarlardaki güncel yetki profili.
+pub fn current_drive_access() -> DriveAccess {
+    super::config::AppConfig::load().drive_access()
+}
+
+struct KeyringTokenStorage {
+    entry: &'static str,
+}
 
 #[async_trait]
 impl TokenStorage for KeyringTokenStorage {
@@ -45,7 +61,7 @@ impl TokenStorage for KeyringTokenStorage {
         let json = serde_json::to_string(&token).map_err(|e| {
             TokenStorageError::Other(std::borrow::Cow::Owned(format!("Serialization error: {}", e)))
         })?;
-        let entry = Entry::new("ConnectSync", TOKEN_ENTRY)
+        let entry = Entry::new("ConnectSync", self.entry)
             .map_err(|e| TokenStorageError::Other(std::borrow::Cow::Owned(format!("Keyring error: {}", e))))?;
         entry.set_password(&json).map_err(|e| {
             TokenStorageError::Other(std::borrow::Cow::Owned(format!("Keyring save error: {}", e)))
@@ -54,7 +70,7 @@ impl TokenStorage for KeyringTokenStorage {
     }
 
     async fn get(&self, _scopes: &[&str]) -> Option<TokenInfo> {
-        let entry = Entry::new("ConnectSync", TOKEN_ENTRY).ok()?;
+        let entry = Entry::new("ConnectSync", self.entry).ok()?;
         let json = entry.get_password().ok()?;
         serde_json::from_str(&json).ok()
     }
@@ -63,22 +79,22 @@ impl TokenStorage for KeyringTokenStorage {
 pub async fn get_drive_token(interactive: bool) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let secret_json = include_bytes!("../../client_secret.json");
     let secret = parse_application_secret(secret_json)?;
+    let access = current_drive_access();
 
     let auth = InstalledFlowAuthenticator::builder(
         secret,
         InstalledFlowReturnMethod::HTTPRedirect,
     )
-    .with_storage(Box::new(KeyringTokenStorage))
+    .with_storage(Box::new(KeyringTokenStorage { entry: token_entry(access) }))
     .flow_delegate(Box::new(CustomBrowserDelegate { interactive }))
     .build()
     .await?;
 
-    // drive.file: uygulamanın oluşturduğu klasör/dosyalar
+    // Kapsamlar yetki profilinden gelir (bkz. connectsync_core::scopes):
+    // - AppOnly: drive.file (yalnızca uygulamanın oluşturduğu klasörler) + drive.appdata
+    // - Full:    drive (tüm Drive; başka hesapların sync kodlarına bağlanmak için) + drive.appdata
     // drive.appdata: appDataFolder'daki anahtar kaydı (connectsync_keys.json) — diğer PC'lerde sync'leri bulmak için şart
-    let scopes = &[
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/drive.appdata",
-    ];
+    let scopes = access.scopes();
     
     // yup_oauth2 caches in memory and keyring transparently
     let token = tokio::time::timeout(std::time::Duration::from_secs(120), auth.token(scopes))
@@ -89,8 +105,9 @@ pub async fn get_drive_token(interactive: bool) -> Result<String, Box<dyn std::e
     Ok(token_str)
 }
 
+/// Güncel yetki profili için önbellekte belirteç var mı? (Diğer profilin belirteci sayılmaz.)
 pub fn is_token_cached() -> bool {
-    if let Ok(entry) = Entry::new("ConnectSync", TOKEN_ENTRY) {
+    if let Ok(entry) = Entry::new("ConnectSync", token_entry(current_drive_access())) {
         entry.get_password().is_ok()
     } else {
         false
@@ -98,8 +115,11 @@ pub fn is_token_cached() -> bool {
 }
 
 pub fn logout() {
-    if let Ok(entry) = Entry::new("ConnectSync", TOKEN_ENTRY) {
-        let _ = entry.delete_credential(); // V1 credential deletion method
+    // Çıkışta İKİ profilin belirteci de silinir.
+    for access in [DriveAccess::AppOnly, DriveAccess::Full] {
+        if let Ok(entry) = Entry::new("ConnectSync", token_entry(access)) {
+            let _ = entry.delete_credential();
+        }
     }
     if let Ok(entry) = Entry::new("ConnectSync", OLD_TOKEN_ENTRY) {
         let _ = entry.delete_credential();
@@ -115,4 +135,19 @@ pub fn logout() {
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let _ = std::fs::remove_file(token_dir.join("tokencache.json"));
     let _ = std::fs::remove_file(token_dir.join("tokencache.json.enc"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_profile_has_its_own_token_entry() {
+        assert_ne!(token_entry(DriveAccess::AppOnly), token_entry(DriveAccess::Full));
+    }
+
+    #[test]
+    fn the_app_only_entry_is_unchanged_so_existing_users_stay_signed_in() {
+        assert_eq!(token_entry(DriveAccess::AppOnly), "google_token_v2");
+    }
 }

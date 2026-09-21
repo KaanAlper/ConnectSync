@@ -1,0 +1,12 @@
+[package]
+name = "connectsync-mobile"
+version = "0.2.0"
+edition = "2024"
+description = "ConnectSync mobil (Android) giriş noktası. ŞİMDİLİK İSKELET: bkz. crates/connectsync-mobile/PLAN.md"
+
+[lib]
+# Android (cargo-apk / xbuild) paylaşımlı kütüphane ister; rlib masaüstünde derleme/test içindir.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+connectsync-core = { path = "../connectsync-core" }

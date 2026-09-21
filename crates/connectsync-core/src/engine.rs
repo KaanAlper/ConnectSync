@@ -17,7 +17,7 @@
 //! üst sınır kabaca (files * (CHANNEL_CAP + 2) + uploads) * 4 MiB. Varsayılanda (4 thread)
 //! ≈ 88 MiB, en yüksek ayarda (16 thread) ≈ 352 MiB.
 
-use super::config::{clamp_threads, DEFAULT_THREADS};
+use crate::limits::{clamp_threads, DEFAULT_THREADS};
 use super::crypto::{decrypt_chunk, encrypt_chunk, hash_chunk_name, Keys};
 use super::drive::DriveClient;
 use super::manifest::{FileInfo, Manifest};
@@ -1095,7 +1095,7 @@ mod tests {
     #[test]
     fn concurrency_default_matches_previous_constants() {
         // Ayar eklenmeden önceki sabitler: 3 dosya / 4 yükleme.
-        let c = Concurrency::from_threads(super::super::config::DEFAULT_THREADS);
+        let c = Concurrency::from_threads(crate::limits::DEFAULT_THREADS);
         assert_eq!(c, Concurrency { files: 3, uploads: 4 });
     }
 
@@ -1104,13 +1104,13 @@ mod tests {
         let low = Concurrency::from_threads(0);
         assert_eq!(low, Concurrency { files: 1, uploads: 1 });
         let high = Concurrency::from_threads(10_000);
-        assert_eq!(high.uploads, super::super::config::MAX_THREADS as usize);
+        assert_eq!(high.uploads, crate::limits::MAX_THREADS as usize);
     }
 
     #[test]
     fn concurrency_never_starves_and_is_monotonic() {
-        let mut prev = Concurrency::from_threads(super::super::config::MIN_THREADS);
-        for t in super::super::config::MIN_THREADS..=super::super::config::MAX_THREADS {
+        let mut prev = Concurrency::from_threads(crate::limits::MIN_THREADS);
+        for t in crate::limits::MIN_THREADS..=crate::limits::MAX_THREADS {
             let c = Concurrency::from_threads(t);
             assert!(c.files >= 1 && c.uploads >= 1, "t={t}");
             assert!(c.files <= c.uploads, "t={t}");

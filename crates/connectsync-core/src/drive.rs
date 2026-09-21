@@ -275,17 +275,29 @@ impl DriveClient {
     /// Ağ/yetki gibi başka hatalar `Err` döner: bunlar "silinmiş" SAYILMAZ, aksi halde geçici bir
     /// kesinti kullanıcıya yanlışlıkla "verin silinmiş" dedirtirdi.
     pub async fn folder_exists(&self, folder_id: &str) -> Result<bool, DriveError> {
+        Ok(self.folder_info(folder_id).await?.is_some_and(|f| !f.trashed))
+    }
+
+    /// Oturum açmış Google hesabının e-postası. Yalnızca TEŞHİS içindir (ör. "bu kod başka bir hesaba ait
+    /// olabilir" durumunda kullanıcı hangi hesapla bağlı olduğunu görsün).
+    pub async fn signed_in_email(&self) -> Result<Option<String>, DriveError> {
+        let url = format!("{API}/about?fields={}", urlencoding::encode("user(emailAddress)"));
+        let about: About = self.send(|c| c.get(&url)).await?.json().await?;
+        Ok(about.user.and_then(|u| u.email_address).filter(|e| !e.is_empty()))
+    }
+
+    /// Klasörün ad/çöp kutusu/gerçek-ad bilgisi. `None` = Drive "dosya yok" (404) dedi: kalıcı olarak
+    /// silinmiş YA DA bu hesap/uygulama klasörü göremiyor (`drive.file` kapsamı yalnızca uygulamanın
+    /// oluşturduğu/açtığı dosyaları gösterir). Ağ/yetki hataları `Err` döner.
+    pub async fn folder_info(&self, folder_id: &str) -> Result<Option<FolderInfo>, DriveError> {
         let url = format!(
             "{API}/files/{}?fields={}",
             urlencoding::encode(folder_id),
-            urlencoding::encode("id,trashed")
+            urlencoding::encode("name,trashed,appProperties")
         );
         match self.send(|c| c.get(&url)).await {
-            Ok(resp) => {
-                let meta: FolderMeta = resp.json().await?;
-                Ok(!meta.trashed)
-            }
-            Err(e) if is_not_found(&e) => Ok(false),
+            Ok(resp) => Ok(Some(resp.json().await?)),
+            Err(e) if is_not_found(&e) => Ok(None),
             Err(e) => Err(e),
         }
     }
@@ -638,9 +650,60 @@ pub fn is_not_found(e: &DriveError) -> bool {
 }
 
 #[derive(Deserialize)]
-struct FolderMeta {
+struct About {
+    user: Option<AboutUser>,
+}
+
+#[derive(Deserialize)]
+struct AboutUser {
+    #[serde(rename = "emailAddress")]
+    email_address: Option<String>,
+}
+
+/// `folder_info` yanıtı.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct FolderInfo {
     #[serde(default)]
-    trashed: bool,
+    pub name: String,
+    #[serde(default)]
+    pub trashed: bool,
+    #[serde(rename = "appProperties", default)]
+    pub app_properties: Option<HashMap<String, String>>,
+}
+
+/// `folder_info` sonucunun kullanıcıya anlamı.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderAccess {
+    /// Klasör var ve çöp kutusunda değil.
+    Available,
+    /// Klasör Drive'ın çöp kutusunda (geri yüklenebilir).
+    Trashed,
+    /// Drive "dosya yok" (404) dedi: kalıcı olarak silinmiş YA DA bu hesap/uygulama göremiyor. `drive.file`
+    /// kapsamı yalnızca uygulamanın oluşturduğu ya da Picker ile açılan dosyaları gösterdiği için, başka bir
+    /// Google hesabının oluşturduğu klasör (herkese açık olsa bile) bu duruma düşer.
+    NotVisible,
+}
+
+pub fn folder_access(info: Option<&FolderInfo>) -> FolderAccess {
+    match info {
+        Some(f) if !f.trashed => FolderAccess::Available,
+        Some(_) => FolderAccess::Trashed,
+        None => FolderAccess::NotVisible,
+    }
+}
+
+impl FolderInfo {
+    /// Kullanıcıya gösterilecek ad: sync oluşturulurken yazılan gerçek ad (appProperties), yoksa
+    /// Drive'daki ad ("ConnectSync_<hex>" öneki atılır; aksi halde rastgele bir hex görünürdü).
+    pub fn display_name(&self) -> String {
+        self.app_properties
+            .as_ref()
+            .and_then(|p| p.get(NAME_PROP))
+            .map(|n| n.trim())
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| self.name.strip_prefix("ConnectSync_").unwrap_or(&self.name).to_string())
+    }
 }
 
 fn is_retryable(status: StatusCode, body: &str) -> bool {
@@ -670,4 +733,73 @@ fn backoff(attempt: u32) -> Duration {
         .map(|d| (d.subsec_nanos() % 1000) as u64)
         .unwrap_or(0);
     Duration::from_millis(base_ms + jitter_ms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn info(json: &str) -> FolderInfo {
+        serde_json::from_str(json).expect("geçerli JSON")
+    }
+
+    #[test]
+    fn the_real_name_written_at_creation_wins() {
+        let f = info(r#"{"name":"ConnectSync_938891ca","appProperties":{"cs_name":"Müzik"}}"#);
+        assert_eq!(f.display_name(), "Müzik");
+    }
+
+    #[test]
+    fn falls_back_to_the_drive_name_without_the_random_prefix() {
+        assert_eq!(info(r#"{"name":"ConnectSync_938891ca"}"#).display_name(), "938891ca");
+        // Önek yoksa olduğu gibi
+        assert_eq!(info(r#"{"name":"Belgelerim"}"#).display_name(), "Belgelerim");
+    }
+
+    #[test]
+    fn a_blank_real_name_is_ignored() {
+        let f = info(r#"{"name":"ConnectSync_abcd1234","appProperties":{"cs_name":"   "}}"#);
+        assert_eq!(f.display_name(), "abcd1234");
+    }
+
+    #[test]
+    fn missing_fields_default_to_a_live_unnamed_folder() {
+        let f = info("{}");
+        assert!(!f.trashed);
+        assert_eq!(f.display_name(), "");
+    }
+
+    #[test]
+    fn trashed_is_parsed() {
+        assert!(info(r#"{"name":"x","trashed":true}"#).trashed);
+    }
+
+    #[test]
+    fn about_response_yields_the_email_or_nothing() {
+        let email = |json: &str| {
+            serde_json::from_str::<About>(json).unwrap().user.and_then(|u| u.email_address)
+        };
+        assert_eq!(email(r#"{"user":{"emailAddress":"a@b.com"}}"#), Some("a@b.com".into()));
+        assert_eq!(email(r#"{"user":{}}"#), None);
+        assert_eq!(email("{}"), None);
+    }
+
+    #[test]
+    fn folder_access_tells_live_trashed_and_invisible_folders_apart() {
+        let live = info(r#"{"name":"x"}"#);
+        let trashed = info(r#"{"name":"x","trashed":true}"#);
+        assert_eq!(folder_access(Some(&live)), FolderAccess::Available);
+        assert_eq!(folder_access(Some(&trashed)), FolderAccess::Trashed);
+        assert_eq!(folder_access(None), FolderAccess::NotVisible);
+    }
+
+    #[test]
+    fn only_a_404_counts_as_not_found() {
+        let api = |status| DriveError::Api { status, body: String::new() };
+        assert!(is_not_found(&api(404)));
+        for other in [401, 403, 429, 500] {
+            assert!(!is_not_found(&api(other)), "{other}");
+        }
+        assert!(!is_not_found(&DriveError::Auth("x".into())));
+    }
 }

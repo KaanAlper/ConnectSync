@@ -1059,6 +1059,7 @@ dependencies = [
  "auto-launch",
  "bincode 1.3.3",
  "chrono",
+ "connectsync-core",
  "directories",
  "dirs 7.0.0",
  "fastcdc",
@@ -1084,6 +1085,35 @@ dependencies = [
  "webbrowser",
  "winres",
  "yup-oauth2",
+]
+
+[[package]]
+name = "connectsync-core"
+version = "0.2.0"
+dependencies = [
+ "aes-gcm",
+ "argon2",
+ "bincode 1.3.3",
+ "chrono",
+ "fastcdc",
+ "getrandom 0.4.3",
+ "hex",
+ "hkdf 0.13.0",
+ "hmac 0.13.0",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "urlencoding",
+ "walkdir",
+]
+
+[[package]]
+name = "connectsync-mobile"
+version = "0.2.0"
+dependencies = [
+ "connectsync-core",
 ]
 
 [[package]]

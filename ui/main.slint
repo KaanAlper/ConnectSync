@@ -73,6 +73,8 @@ export global Tr {
     in property <string> network_popups_label;
     in property <string> check_interval_label;
     in property <string> dark_theme_label;
+    in property <string> drive_access_label;
+    in property <string> drive_access_hint;
     in property <string> update_now;
     in property <string> ok;
 }
@@ -400,6 +402,8 @@ export component MainWindow inherits Window {
     in-out property <string> setting_threads: "4";
     // Tema: Theme.dark ile çift yönlü (ui/theme.slint). Rust başlangıçta config'ten doldurur.
     in-out property <bool> setting_dark_theme <=> Theme.dark;
+    // Tüm Drive yetkisi (başka hesapların sync kodlarına bağlanmak için). Kapalı = yalnızca kendi klasörlerin.
+    in-out property <bool> setting_drive_full: false;
 
     // ── Güncelleme popup'ı (Rust: src/update_ui.rs doldurur) ────────────────
     in-out property <UpdateState> update_state: UpdateState.idle;
@@ -443,6 +447,7 @@ export component MainWindow inherits Window {
     callback check_interval_changed(string);
     callback threads_changed(string);
     callback theme_changed(bool /*dark*/);
+    callback drive_access_toggled(bool /*full*/);
     callback check_updates_requested();
     callback update_now_requested();
     callback restart_requested();
@@ -1791,6 +1796,16 @@ export component MainWindow inherits Window {
                             toggled => { root.network_popups_toggled(root.setting_network_popups); }
                         }
                     }
+
+                    HorizontalLayout {
+                        Text { text: Tr.drive_access_label; color: Theme.text; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; }
+                        Rectangle { width: 10px; }
+                        Switch {
+                            checked <=> root.setting_drive_full;
+                            toggled => { root.drive_access_toggled(root.setting_drive_full); }
+                        }
+                    }
+                    Text { text: Tr.drive_access_hint; color: Theme.text_faint; font-size: 0.8rem; wrap: word-wrap; }
 
                     Rectangle { height: 5px; }
                     Text { text: Tr.section_system; color: Theme.accent; font-size: 1rem; font-weight: 700; }

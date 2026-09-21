@@ -121,5 +121,11 @@
     "err_edit_path_empty": "La ruta de la carpeta local no puede estar vacía.",
     "err_path_not_dir": "La ruta seleccionada no es una carpeta.",
     "status_drive_missing": "Los datos de Drive se eliminaron",
-    "err_reupload": "Error al volver a subir: {e}"
+    "err_reupload": "Error al volver a subir: {e}",
+    "err_code_unreachable": "No se puede acceder a este código. ConnectSync solo puede abrir por ahora carpetas creadas con tu propia cuenta de Google; el código puede pertenecer a otra cuenta o la carpeta se eliminó de Drive.",
+    "err_code_check": "No se pudo verificar el código: {e}",
+    "err_signed_in_as": "Cuenta de Google conectada: {account}",
+    "err_code_trashed": "Esta carpeta está en la papelera de Drive. Restáurala desde la papelera y podrás conectarte.",
+    "drive_access_label": "Acceso completo a Drive (para compartir con otros)",
+    "drive_access_hint": "Desactivado, solo se accede a las carpetas que ConnectSync creó; no puedes conectarte con el código de otra cuenta de Google. Activado, la app puede acceder a todo tu Drive y te pedirá iniciar sesión de nuevo. Puede requerirse aprobación de Google."
 }

@@ -1,0 +1,23 @@
+[package]
+name = "connectsync-core"
+version = "0.2.0"
+edition = "2024"
+description = "ConnectSync çekirdeği: şifreleme, manifest, Drive istemcisi ve senkron motoru. Arayüzden ve platformdan (masaüstü/mobil) bağımsızdır."
+
+[dependencies]
+aes-gcm.workspace = true
+argon2.workspace = true
+bincode.workspace = true
+chrono.workspace = true
+fastcdc.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+hkdf.workspace = true
+hmac.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+urlencoding.workspace = true
+walkdir.workspace = true

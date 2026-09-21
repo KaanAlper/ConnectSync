@@ -121,5 +121,11 @@
     "err_edit_path_empty": "ローカルフォルダーのパスを空にはできません。",
     "err_path_not_dir": "選択したパスはフォルダーではありません。",
     "status_drive_missing": "Drive のデータが削除されました",
-    "err_reupload": "再アップロードに失敗しました：{e}"
+    "err_reupload": "再アップロードに失敗しました：{e}",
+    "err_code_unreachable": "このコードにはアクセスできません。ConnectSync は現在、自分の Google アカウントで作成したフォルダーしか開けません。このコードは別のアカウントのものか、フォルダーが Drive から削除された可能性があります。",
+    "err_code_check": "コードを確認できませんでした：{e}",
+    "err_signed_in_as": "ログイン中の Google アカウント：{account}",
+    "err_code_trashed": "このフォルダーは Drive のゴミ箱にあります。ゴミ箱から復元すると接続できます。",
+    "drive_access_label": "Drive への完全アクセス（他の人との共有用）",
+    "drive_access_hint": "オフの間は ConnectSync 自身が作成したフォルダーにのみアクセスでき、別の Google アカウントの同期コードでは接続できません。オンにするとアプリは Drive 全体にアクセスでき、再ログインを求めます。Google の承認が必要になる場合があります。"
 }

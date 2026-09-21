@@ -121,5 +121,11 @@
     "err_edit_path_empty": "Le chemin du dossier local ne peut pas être vide.",
     "err_path_not_dir": "Le chemin sélectionné n'est pas un dossier.",
     "status_drive_missing": "Les données Drive ont été supprimées",
-    "err_reupload": "Échec du renvoi : {e}"
+    "err_reupload": "Échec du renvoi : {e}",
+    "err_code_unreachable": "Ce code est inaccessible. ConnectSync ne peut actuellement ouvrir que les dossiers créés avec votre propre compte Google ; ce code appartient peut-être à un autre compte, ou le dossier a été supprimé de Drive.",
+    "err_code_check": "Impossible de vérifier le code : {e}",
+    "err_signed_in_as": "Compte Google connecté : {account}",
+    "err_code_trashed": "Ce dossier est dans la corbeille de Drive. Restaurez-le depuis la corbeille pour pouvoir vous connecter.",
+    "drive_access_label": "Accès complet à Drive (pour partager avec d'autres)",
+    "drive_access_hint": "Désactivé, seuls les dossiers créés par ConnectSync sont accessibles ; impossible de se connecter avec le code d'un autre compte Google. Activé, l'application peut accéder à tout votre Drive et vous demande de vous reconnecter. Une validation de Google peut être requise."
 }

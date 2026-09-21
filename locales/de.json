@@ -121,5 +121,11 @@
     "err_edit_path_empty": "Der lokale Ordnerpfad darf nicht leer sein.",
     "err_path_not_dir": "Der ausgewählte Pfad ist kein Ordner.",
     "status_drive_missing": "Drive-Daten wurden gelöscht",
-    "err_reupload": "Erneutes Hochladen fehlgeschlagen: {e}"
+    "err_reupload": "Erneutes Hochladen fehlgeschlagen: {e}",
+    "err_code_unreachable": "Dieser Code ist nicht erreichbar. ConnectSync kann derzeit nur Ordner öffnen, die mit deinem eigenen Google-Konto erstellt wurden; der Code gehört möglicherweise zu einem anderen Konto, oder der Ordner wurde aus Drive gelöscht.",
+    "err_code_check": "Der Code konnte nicht überprüft werden: {e}",
+    "err_signed_in_as": "Angemeldetes Google-Konto: {account}",
+    "err_code_trashed": "Dieser Ordner liegt im Drive-Papierkorb. Stelle ihn aus dem Papierkorb wieder her, dann kannst du dich verbinden.",
+    "drive_access_label": "Voller Drive-Zugriff (zum Teilen mit anderen)",
+    "drive_access_hint": "Ausgeschaltet sind nur von ConnectSync selbst erstellte Ordner erreichbar; mit dem Sync-Code eines anderen Google-Kontos ist keine Verbindung möglich. Eingeschaltet kann die App auf dein gesamtes Drive zugreifen und verlangt eine erneute Anmeldung. Eine Google-Genehmigung kann erforderlich sein."
 }

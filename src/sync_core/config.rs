@@ -42,6 +42,10 @@ pub struct AppConfig {
     pub show_network_popups: bool,
     /// Arayüz teması: `THEME_DARK` (varsayılan) ya da `THEME_LIGHT`. Tanınmayan değer koyu sayılır.
     pub theme: String,
+    /// `true` = tüm Drive yetkisi (`drive`): başka Google hesaplarının sync kodlarına bağlanmayı mümkün
+    /// kılar ama Google doğrulaması ister ve uygulamaya tüm Drive'ı açar. `false` (varsayılan) =
+    /// yalnızca uygulamanın kendi oluşturduğu klasörler (`drive.file`). Bkz. `connectsync_core::scopes`.
+    pub drive_full_access: bool,
 }
 
 pub const THEME_DARK: &str = "dark";
@@ -56,16 +60,9 @@ fn default_true() -> bool {
     true
 }
 
-/// Eşzamanlı aktarım ayarı için varsayılan/sınır değerler.
-/// Bellek üst sınırı için bkz. `engine.rs` başındaki not (16'da ≈ 350 MiB).
-pub const DEFAULT_THREADS: u32 = 4;
-pub const MIN_THREADS: u32 = 1;
-pub const MAX_THREADS: u32 = 16;
-
-/// Kullanıcının girdiği/okunan değeri izin verilen aralığa çeker.
-pub fn clamp_threads(threads: u32) -> u32 {
-    threads.clamp(MIN_THREADS, MAX_THREADS)
-}
+// Eşzamanlı aktarım sınırları çekirdekte (motor da kullanır); buradan yeniden dışa aktarılır ki
+// `sync_core::config::clamp_threads` gibi mevcut yollar çalışmaya devam etsin.
+pub use connectsync_core::limits::{clamp_threads, DEFAULT_THREADS};
 
 /// "Kontrol aralığı" ayarının varsayılanı (dakika).
 pub const DEFAULT_CHECK_INTERVAL_MINUTES: u32 = 5;
@@ -84,8 +81,51 @@ impl Default for AppConfig {
             show_error_popups: true,
             show_network_popups: true,
             theme: THEME_DARK.to_string(),
+            drive_full_access: false,
         }
     }
+}
+
+/// Uzaktan (Drive'dan) gelen bir adı, seçilen klasörün İÇİNDE tek bir alt klasör adı olarak
+/// kullanılabilir hale getirir. Ad başka bir kullanıcının paylaştığı sync'ten gelebileceği için
+/// güvenilmezdir: `../..` ya da `/etc` gibi bir ad `parent.join(ad)` ile seçilen klasörün dışına
+/// çıkardı (mutlak yol `join`'i tamamen değiştirir).
+///
+/// - Yol ayıracı, Windows'ta yasak karakterler ve kontrol karakterleri `_` olur.
+/// - Sondaki nokta/boşluk atılır (Windows kabul etmez); yalnızca noktalardan oluşan ad (`.`, `..`) geçersizdir.
+/// - Windows'un ayrılmış aygıt adları (CON, NUL, COM1…) sonuna `_` alır.
+/// - En fazla 100 karakter. Boş kalırsa `fallback` (o da aynı kurallardan geçer, yine boşsa "ConnectSync").
+pub fn safe_folder_name(name: &str, fallback: &str) -> String {
+    fn clean(raw: &str) -> String {
+        let replaced: String = raw
+            .chars()
+            .map(|c| match c {
+                '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*' => '_',
+                c if c.is_control() => '_',
+                c => c,
+            })
+            .collect();
+        let trimmed = replaced.trim().trim_end_matches(['.', ' ']);
+        if trimmed.is_empty() || trimmed.chars().all(|c| c == '.') {
+            return String::new();
+        }
+        let mut out: String = trimmed.chars().take(100).collect();
+        let stem = out.split('.').next().unwrap_or("").to_ascii_uppercase();
+        let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+                && stem.len() == 4
+                && stem.as_bytes()[3].is_ascii_digit());
+        if reserved {
+            out.push('_');
+        }
+        out
+    }
+    let name = clean(name);
+    if !name.is_empty() {
+        return name;
+    }
+    let fallback = clean(fallback);
+    if fallback.is_empty() { "ConnectSync".to_string() } else { fallback }
 }
 
 /// Sync düzenleme/oluşturma girdisinin neden reddedildiği.
@@ -181,6 +221,11 @@ impl AppConfig {
             can_others_write: None,
         });
         EditApplied { is_new: true, old_path: None, code: id.to_string() }
+    }
+
+    /// Bu ayara göre Google'dan istenecek yetki profili.
+    pub fn drive_access(&self) -> connectsync_core::scopes::DriveAccess {
+        connectsync_core::scopes::DriveAccess::from_full_flag(self.drive_full_access)
     }
 
     /// Koyu palet mi kullanılacak? Yalnızca açıkça `light` denmişse hayır; bozuk/eski değerde
@@ -453,5 +498,92 @@ mod tests {
         assert_eq!(ok, Ok(42));
         let err = AppConfig::locked_update(AppConfig::default, |_| Err("disk dolu".into()), |_| ());
         assert_eq!(err, Err("disk dolu".to_string()));
+    }
+
+    // ── uzak ad → güvenli alt klasör adı ────────────────────────────────────
+
+    /// `base.join(safe)` yalnızca base'in İÇİNDE tek bir bileşen olmalı.
+    fn assert_stays_inside(name: &str) {
+        let safe = safe_folder_name(name, "Klasör");
+        let joined = Path::new("/base").join(&safe);
+        let rel = joined.strip_prefix("/base").expect("base'in dışına çıktı");
+        let parts: Vec<_> = rel.components().collect();
+        assert_eq!(parts.len(), 1, "{name:?} -> {safe:?} birden çok bileşen oldu");
+        assert!(matches!(parts[0], std::path::Component::Normal(_)), "{name:?} -> {safe:?}");
+    }
+
+    #[test]
+    fn hostile_remote_names_cannot_escape_the_chosen_folder() {
+        for name in [
+            "../../etc", "../x", "/etc/passwd", "a/b/c", "..", ".", "...",
+            r"C:\Windows\System32", r"..\..\x", "x/../../y", r"\\server\share",
+        ] {
+            assert_stays_inside(name);
+        }
+    }
+
+    #[test]
+    fn ordinary_and_unicode_names_are_kept() {
+        assert_eq!(safe_folder_name("Müzik ve Şarkılar", "Klasör"), "Müzik ve Şarkılar");
+        assert_eq!(safe_folder_name("音楽 2026", "Klasör"), "音楽 2026");
+        assert_eq!(safe_folder_name("  Belgeler  ", "Klasör"), "Belgeler");
+        assert_eq!(safe_folder_name(".hidden", "Klasör"), ".hidden");
+    }
+
+    #[test]
+    fn forbidden_characters_become_underscores() {
+        assert_eq!(safe_folder_name("a:b*c?d|e", "Klasör"), "a_b_c_d_e");
+        assert_eq!(safe_folder_name("a/b", "Klasör"), "a_b");
+        assert_eq!(safe_folder_name("tab\there", "Klasör"), "tab_here");
+    }
+
+    #[test]
+    fn trailing_dots_and_spaces_are_dropped_and_dots_only_names_fall_back() {
+        assert_eq!(safe_folder_name("proje. . ", "Klasör"), "proje");
+        for junk in ["", "   ", ".", "..", "....", " . "] {
+            assert_eq!(safe_folder_name(junk, "Klasör"), "Klasör", "{junk:?}");
+        }
+    }
+
+    #[test]
+    fn windows_reserved_device_names_are_defused() {
+        for (raw, want) in [("CON", "CON_"), ("nul", "nul_"), ("Com1", "Com1_"), ("LPT9", "LPT9_"), ("aux.txt", "aux.txt_")] {
+            assert_eq!(safe_folder_name(raw, "Klasör"), want);
+        }
+        // Benzer ama ayrılmış olmayanlar dokunulmaz
+        for ok in ["CONSOLE", "COM10", "COM", "LPT", "console"] {
+            assert_eq!(safe_folder_name(ok, "Klasör"), ok);
+        }
+    }
+
+    #[test]
+    fn very_long_names_are_capped_by_characters_not_bytes() {
+        let long = "ş".repeat(300);
+        let safe = safe_folder_name(&long, "Klasör");
+        assert_eq!(safe.chars().count(), 100);
+        assert!(safe.chars().all(|c| c == 'ş'));
+    }
+
+    #[test]
+    fn an_unusable_fallback_still_yields_a_valid_name() {
+        // Geçersiz yedek ad da aynı temizlikten geçer; hiçbiri kullanılamazsa sabit ad.
+        assert_eq!(safe_folder_name("..", ".."), "ConnectSync");
+        assert_eq!(safe_folder_name("", "../x"), ".._x");
+        assert_stays_inside(&safe_folder_name("", "../x"));
+    }
+
+    // ── Drive yetki profili ─────────────────────────────────────────────────
+
+    #[test]
+    fn drive_access_defaults_to_the_narrow_profile_and_old_configs_keep_it() {
+        assert!(!AppConfig::default().drive_access().is_full());
+        let old: AppConfig = serde_json::from_str(r#"{"language":"tr"}"#).unwrap();
+        assert!(!old.drive_access().is_full(), "alan eklenmeden önceki config geniş yetkiye kaymamalı");
+    }
+
+    #[test]
+    fn the_full_access_flag_selects_the_full_profile() {
+        let c = AppConfig { drive_full_access: true, ..AppConfig::default() };
+        assert!(c.drive_access().is_full());
     }
 }
