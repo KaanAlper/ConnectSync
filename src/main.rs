@@ -1521,7 +1521,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tray_menu.append(&show_i).unwrap();
     tray_menu.append(&quit_i).unwrap();
 
-    let icon = load_icon(include_bytes!("../logo.png"));
+    let icon = load_icon(include_bytes!("../assets/logo_square.png"));
     let _tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
         .with_tooltip("ConnectSync")
