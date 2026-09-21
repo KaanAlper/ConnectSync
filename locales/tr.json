@@ -111,5 +111,7 @@
   "edit_change_path": "Değiştir",
   "edit_rename_drive": "Drive'da da ismini değiştir",
   "edit_save": "Kaydet",
-  "edit_sync_btn": "Düzenle"
+  "edit_sync_btn": "Düzenle",
+  "create_new_sync_title": "Yeni Senkronizasyon",
+  "can_others_write": "Başkaları değişiklik yapabilsin"
 }

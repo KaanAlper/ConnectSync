@@ -111,5 +111,7 @@
   "edit_change_path": "Change",
   "edit_rename_drive": "Rename on Drive too",
   "edit_save": "Save",
-  "edit_sync_btn": "Edit"
+  "edit_sync_btn": "Edit",
+  "create_new_sync_title": "New Sync",
+  "can_others_write": "Others can edit"
 }

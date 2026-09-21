@@ -824,16 +824,52 @@ fn setup_ui(
 
     // ── Yeni Sync Oluştur ─────────────────────────────────────────────────
     let ui_weak = ui.as_weak();
-    let app_state_new = app_state.clone();
     ui.on_create_new_sync(move || {
         let ui_weak = ui_weak.clone();
-        let app_state_new = app_state_new.clone();
         std::thread::spawn(move || {
-            let Some(path) = FileDialog::new()
+            let Some(path) = rfd::FileDialog::new()
                 .set_title(i18n::t("pick_sync_folder"))
                 .pick_folder()
             else { return };
+            
             let _ = slint::invoke_from_event_loop(move || {
+                let folder_name = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(i18n::t("default_folder_name").as_str())
+                    .to_string();
+
+                let config = sync_core::config::AppConfig::load();
+                if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        show_error(&ui, tr_ss("err_folder_exists"));
+                    }
+                    return;
+                }
+
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.invoke_show_new_sync(folder_name.into(), path.to_string_lossy().to_string().into());
+                }
+            });
+        });
+    });
+
+    // ── Yeni Sync Kaydet ──────────────────────────────────────────────────
+    let ui_weak = ui.as_weak();
+    let app_state_new = app_state.clone();
+    ui.on_new_sync_save(move |name, path_str, can_others_write| {
+        let ui_weak = ui_weak.clone();
+        let app_state_bg = app_state_new.clone();
+        let folder_name = name.to_string();
+        let path = std::path::PathBuf::from(path_str.as_str());
+
+        // Hata ayıklama vs
+        let config = sync_core::config::AppConfig::load();
+        if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
+            if let Some(ui) = ui_weak.upgrade() {
+                show_error(&ui, tr_ss("err_folder_exists"));
+            }
+            return;
+        }
 
         let mut raw = [0u8; 16];
         if getrandom::fill(&mut raw).is_err() {
@@ -843,22 +879,7 @@ fn setup_ui(
             return;
         }
         let hex_key = hex::encode(raw);
-        let folder_name = path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(i18n::t("default_folder_name").as_str())
-            .to_string();
 
-        let config = sync_core::config::AppConfig::load();
-        if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
-            if let Some(ui) = ui_weak.upgrade() {
-                show_error(&ui, tr_ss("err_folder_exists"));
-            }
-            return;
-        }
-
-        // Show a loading UI directly on main screen before entering Active View?
-        // Or we can enter Active View with a temporary code, and update it later.
-        // Let's just enter Active View with "Bekleniyor..."
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_active_sync_code("pending".into()); // Geçici - kopyala butonu gizlenecek
             ui.set_active_hidden(false);
@@ -867,19 +888,15 @@ fn setup_ui(
             ui.set_is_syncing(true);
         }
 
-        let ui_weak_bg = ui_weak.clone();
-        let app_state_bg = app_state_new.clone();
         tokio::spawn(async move {
             match sync_core::auth::get_drive_token(true).await {
                 Ok(token) => {
                     let drive = sync_core::drive::DriveClient::new(token, None).unwrap();
                     let drive_folder_name = format!("ConnectSync_{}", &hex_key[0..8.min(hex_key.len())]);
-                    match drive.get_or_create_folder(&drive_folder_name, None).await {
+                    match drive.get_or_create_folder(&drive_folder_name, None, can_others_write).await {
                         Ok(folder_id) => {
                             // save keys
                             let _ = drive.save_sync_key(&folder_id, &hex_key).await;
-                            // Kullanıcının seçtiği gerçek klasör adını sakla (aksi halde "Drive'da"
-                            // listesinde ConnectSync_<hex> önekinden kalan rastgele görünümlü bir ad çıkar).
                             let _ = drive.set_folder_display_name(&folder_id, &folder_name).await;
 
                             let universal_code = format!("cs-{}-{}", folder_id, hex_key);
@@ -894,7 +911,7 @@ fn setup_ui(
                             let _ = config.save();
                             
                             let code_for_ui = universal_code.clone();
-                            let ui_w_update = ui_weak_bg.clone();
+                            let ui_w_update = ui_weak.clone();
                             let app_state_update = app_state_bg.clone();
                             let _ = slint::invoke_from_event_loop(move || {
                                 if let Some(ui) = ui_w_update.upgrade() {
@@ -903,13 +920,13 @@ fn setup_ui(
                                     ui.set_status_text(tr_ss("sync_ready"));
                                 }
                             });
-                            
-                            start_sync_loop(ui_weak_bg, app_state_bg, universal_code, path);
+
+                            start_sync_loop(ui_weak, app_state_bg, universal_code, path);
                         },
                         Err(e) => {
                             let msg = i18n::tf("err_create_drive_folder", &[("e", &e.to_string())]);
                             let _ = slint::invoke_from_event_loop(move || {
-                                if let Some(ui) = ui_weak_bg.upgrade() {
+                                if let Some(ui) = ui_weak.upgrade() {
                                     show_error(&ui, msg.as_str().into());
                                     ui.set_active_sync_code("".into());
                                     ui.set_active_hidden(false);
@@ -921,7 +938,7 @@ fn setup_ui(
                 },
                 Err(_) => {
                     let _ = slint::invoke_from_event_loop(move || {
-                        if let Some(ui) = ui_weak_bg.upgrade() {
+                        if let Some(ui) = ui_weak.upgrade() {
                             show_error(&ui, tr_ss("err_drive_login"));
                             ui.set_active_sync_code("".into());
                             ui.set_active_hidden(false);
@@ -930,8 +947,6 @@ fn setup_ui(
                     });
                 }
             }
-        });
-            });
         });
     });
 
@@ -961,7 +976,7 @@ fn setup_ui(
                 let path = parent_path.join(&cloud_name);
 
                 let _ = slint::invoke_from_event_loop(move || {
-                    let mut config = sync_core::config::AppConfig::load();
+                    let config = sync_core::config::AppConfig::load();
                     if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
                         if let Some(ui) = ui_weak2.upgrade() {
                             show_error(&ui, tr_ss("err_folder_exists"));
@@ -1107,7 +1122,7 @@ async fn sync_loop_task(
     } else {
         // Backward compatibility
         let folder_name = format!("ConnectSync_{}", &sync_code[0..8.min(sync_code.len())]);
-        let id = match drive.get_or_create_folder(&folder_name, None).await {
+        let id = match drive.get_or_create_folder(&folder_name, None, true).await {
             Ok(id) => id,
             Err(e) => {
                 let msg = i18n::tf("err_create_drive_folder", &[("e", &e.to_string())]);

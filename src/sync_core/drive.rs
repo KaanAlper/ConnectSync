@@ -293,6 +293,7 @@ impl DriveClient {
     pub async fn get_or_create_folder(&self, 
         name: &str,
         parent_id: Option<&str>,
+        can_others_write: bool,
     ) -> Result<String, DriveError> {
         let mut q = format!(
             "name = '{}' and mimeType = '{FOLDER_MIME}' and trashed = false",
@@ -327,7 +328,8 @@ impl DriveClient {
 
         // Paylaşım ayarını herkese açık yazılabilir yap (dışardan bağlanabilmesi için)
         let perm_url = format!("{API}/files/{}/permissions", created.id);
-        let perm_body = serde_json::json!({ "type": "anyone", "role": "writer" });
+        let role = if can_others_write { "writer" } else { "reader" };
+        let perm_body = serde_json::json!({ "type": "anyone", "role": role });
         let _ = self.send(|c| c.post(&perm_url).json(&perm_body)).await;
 
         Ok(created.id)

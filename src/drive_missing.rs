@@ -171,7 +171,7 @@ async fn recreate_on_drive(code: &str) -> Result<(String, PathBuf), String> {
     let drive = DriveClient::new(token, None).map_err(|e| e.to_string())?;
 
     let folder_id = drive
-        .get_or_create_folder(&drive_folder_name(&hex_key), None)
+        .get_or_create_folder(&drive_folder_name(&hex_key), None, true)
         .await
         .map_err(|e| i18n::tf("err_create_drive_folder", &[("e", &e.to_string())]))?;
     let _ = drive.save_sync_key(&folder_id, &hex_key).await;

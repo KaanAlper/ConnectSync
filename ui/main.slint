@@ -368,6 +368,7 @@ export component MainWindow inherits Window {
     in-out property <string> missing_sync_id: "";
 
     in-out property <bool> show_edit_dialog: false;
+    in-out property <bool> is_creating_new_sync: false;
     in-out property <string> edit_sync_id: "";
     in-out property <string> edit_sync_name: "";
     in-out property <string> edit_sync_path: "";
@@ -406,6 +407,7 @@ export component MainWindow inherits Window {
     callback missing_remove(string);
     callback missing_upload(string);
     callback edit_sync_save(string, string, string, bool);
+    callback new_sync_save(string, string, bool);
     callback edit_pick_path(string);
     callback show_edit_sync(string, string, string);
     show_edit_sync(id, name, path) => {
@@ -413,6 +415,16 @@ export component MainWindow inherits Window {
         root.edit_sync_name = name;
         root.edit_sync_path = path;
         root.edit_rename_on_drive = false;
+        root.is_creating_new_sync = false;
+        root.show_edit_dialog = true;
+    }
+
+    callback show_new_sync(string, string);
+    show_new_sync(name, path) => {
+        root.edit_sync_name = name;
+        root.edit_sync_path = path;
+        root.edit_rename_on_drive = true;
+        root.is_creating_new_sync = true;
         root.show_edit_dialog = true;
     }
 
