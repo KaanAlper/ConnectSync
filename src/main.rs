@@ -596,6 +596,11 @@ fn setup_ui(
     ui.on_confirm_delete_sync(move |id, delete_from_drive| {
         let id = id.to_string();
         remove_local_sync(&ui_weak_del, &app_state_del, &id);
+        if let Some(ui) = ui_weak_del.upgrade() {
+            if ui.get_active_sync_code().as_str() == id.as_str() {
+                ui.set_active_sync_code("".into());
+            }
+        }
 
         if delete_from_drive {
             let fid = drive_folder_id(&id).to_string();

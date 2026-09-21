@@ -10,6 +10,7 @@ export global Tr {
     // Edit Sync
     in property <string> edit_sync_title;
     in property <string> edit_name;
+    in property <string> new_drive_folder_name;
     in property <string> edit_path;
     in property <string> edit_change_path;
     in property <string> edit_rename_drive;
@@ -862,7 +863,8 @@ export component MainWindow inherits Window {
                     spacing: 15px;
                     alignment: center;
                     ModernButton { text: Tr.main_menu; width: 120px; clicked => { root.active_hidden = true; } }
-                    ModernButton { text: Tr.stop_and_delete; width: 120px; clicked => { root.stop_sync(root.active_sync_code); root.active_sync_code = ""; root.active_hidden = false; } }
+                    if root.is_syncing: ModernButton { text: Tr.stop_and_delete; width: 120px; clicked => { root.stop_sync(root.active_sync_code); root.active_sync_code = ""; root.active_hidden = false; } }
+                    if !root.is_syncing: DangerButton { text: Tr.remove; width: 120px; clicked => { root.delete_target_id = root.active_sync_code; root.show_delete_dialog = true; } }
                 }
             }
 
@@ -2162,7 +2164,7 @@ export component MainWindow inherits Window {
                     Text { text: root.is_creating_new_sync ? Tr.create_new_sync_title : Tr.edit_sync_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; wrap: word-wrap; }
 
                     // Name
-                    Text { text: Tr.edit_name; font-size: 0.9rem; color: Theme.text_muted; }
+                    Text { text: root.is_creating_new_sync ? Tr.new_drive_folder_name : Tr.edit_name; font-size: 0.9rem; color: Theme.text_muted; }
                     Rectangle {
                         height: 40px;
                         background: Theme.bg;
@@ -2214,7 +2216,7 @@ export component MainWindow inherits Window {
                             checked <=> root.edit_rename_on_drive;
                         }
                         Text {
-    in property <string> edit_rename_drive;
+                            text: root.is_creating_new_sync ? Tr.can_others_write : Tr.edit_rename_drive;
                             color: Theme.text;
                             font-size: 0.95rem;
                             vertical-alignment: center;
