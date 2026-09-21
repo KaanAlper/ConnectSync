@@ -15,6 +15,8 @@ export global Tr {
     out property <string> edit_rename_drive: "Drive'da da ismini değiştir";
     out property <string> edit_save: "Kaydet";
     out property <string> edit_sync_btn: "Düzenle";
+    out property <string> create_new_sync_title: "Yeni Senkronizasyon";
+    out property <string> can_others_write: "Başkaları değişiklik yapabilsin";
     in property <string> settings;
     in property <string> section_this_pc: "Bu bilgisayarda aktif olarak eşitlenenler";
     in property <string> section_on_drive: "Drive'da olup bu bilgisayara eklenmemiş olanlar";
@@ -2156,7 +2158,7 @@ export component MainWindow inherits Window {
                     padding: 24px;
                     spacing: 16px;
 
-                    Text { text: Tr.edit_sync_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+                    Text { text: root.is_creating_new_sync ? Tr.create_new_sync_title : Tr.edit_sync_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; wrap: word-wrap; }
 
                     // Name
                     Text { text: Tr.edit_name; font-size: 0.9rem; color: Theme.text_muted; }
