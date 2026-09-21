@@ -664,6 +664,7 @@ fn setup_ui(
         let mut old_path = String::new();
         let mut do_rename = false;
         let mut code = String::new();
+        let mut is_new = false;
         
         if let Some(folder) = config.sync_folders.iter_mut().find(|f| f.id == id_str) {
             old_path = folder.path.clone();
@@ -671,11 +672,32 @@ fn setup_ui(
             folder.path = path_str.clone();
             code = folder.code.clone();
             do_rename = rename_on_drive;
+        } else {
+            is_new = true;
+            config.sync_folders.push(sync_core::config::SyncFolder {
+                id: id_str.clone(),
+                name: name_str.clone(),
+                path: path_str.clone(),
+                code: id_str.clone(),
+            });
+            code = id_str.clone();
+            do_rename = rename_on_drive;
         }
         
         let _ = config.save();
         
-        if old_path != "" {
+        if is_new {
+            if let Some(ui) = ui_weak_edit_save.upgrade() {
+                ui.set_active_sync_code(id_str.clone().as_str().into());
+                ui.set_active_hidden(false);
+                ui.set_active_sync_folder(name_str.as_str().into());
+                ui.set_status_text(tr_ss("status_pulling"));
+                ui.set_is_syncing(true);
+            }
+            start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id_str.clone(), std::path::PathBuf::from(path_str.clone()));
+        }
+
+        if old_path != "" || is_new {
             if do_rename {
                 let name_clone = name_str.clone();
                 tokio::spawn(async move {
@@ -689,7 +711,7 @@ fn setup_ui(
                 });
             }
             
-            if old_path != path_str {
+            if !is_new && old_path != path_str {
                 // Yol değiştiyse eski döngüyü kapatıp yenisini başlat
                 let app_state_clone = app_state_edit.clone();
                 let id_clone = id_str.clone();
@@ -700,7 +722,7 @@ fn setup_ui(
                 }
                 drop(st);
                 
-                start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id_str.clone(), std::path::PathBuf::from(path_str));
+                start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id_str.clone(), std::path::PathBuf::from(path_str.clone()));
             }
         }
         
