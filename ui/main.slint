@@ -1960,42 +1960,66 @@ export component MainWindow inherits Window {
         }
 
         // ── Hata Modal Dialog ─────────────────────────
-        Rectangle {
-            width: 100%; height: 100%; background: Theme.scrim_strong;
-            opacity: root.error_text != "" ? 1.0 : 0.0;
-            visible: self.opacity > 0.01;
-            animate opacity { duration: 200ms; easing: ease-out; }
-
-            TouchArea { clicked => { root.error_text = ""; } }
+        if root.error_text != "": TouchArea {
+            width: 100%;
+            height: 100%;
+            scroll-event(event) => { return accept; }
 
             Rectangle {
-                width: 360px;
-                height: 240px;
+                width: 100%; height: 100%; background: Theme.scrim_strong;
+                opacity: root.error_text != "" ? 1.0 : 0.0;
+                animate opacity { duration: 200ms; easing: ease-out; }
+            }
+
+            Rectangle {
+                width: 380px;
+                height: err_content.preferred-height;
                 background: Theme.bg;
                 border-radius: 12px;
                 border-width: 1px;
                 border-color: Theme.surface;
-                drop-shadow-blur: 15px; drop-shadow-color: Theme.shadow;
+                drop-shadow-blur: 15px;
+                drop-shadow-color: Theme.shadow;
 
-                VerticalLayout {
+                err_content := VerticalLayout {
                     padding: 24px;
                     spacing: 16px;
                     alignment: center;
 
-                    Text { text: "Hata"; color: Theme.danger; font-size: 1.1rem; font-weight: 700; horizontal-alignment: center; }
+                    Text { text: "Hata"; font-size: 1.2rem; font-weight: 700; color: Theme.danger; horizontal-alignment: center; }
                     
-                    ScrollView {
-                        height: 120px;
-                        Text { text: root.error_text; color: Theme.text_muted; font-size: 0.85rem; wrap: word-wrap; horizontal-alignment: center; }
+                    Rectangle {
+                        width: 100%;
+                        height: 140px;
+                        background: Theme.surface;
+                        border-radius: 8px;
+
+                        Flickable {
+                            width: parent.width;
+                            height: parent.height;
+                            viewport-height: err_text.preferred-height + 24px;
+                            interactive: true;
+
+                            err_text := Text {
+                                x: 12px;
+                                y: 12px;
+                                width: parent.width - 24px;
+                                text: root.error_text;
+                                color: Theme.text_muted;
+                                font-size: 0.85rem;
+                                wrap: word-wrap;
+                                horizontal-alignment: left;
+                            }
+                        }
                     }
 
                     HorizontalLayout {
-                        spacing: 15px;
                         alignment: center;
-                        Rectangle {
-                            width: 120px; height: 40px; border-radius: 8px; background: ta_err.pressed ? Theme.accent_hover : (ta_err.has-hover ? Theme.accent : Theme.accent);
-                            Text { text: "Tamam"; color: Theme.on_accent; font-size: 0.95rem; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                            ta_err := TouchArea { clicked => { root.error_text = ""; } }
+                        height: 40px;
+                        ModernButton {
+                            text: Tr.ok;
+                            width: 120px;
+                            clicked => { root.error_text = ""; }
                         }
                     }
                 }
@@ -2003,39 +2027,48 @@ export component MainWindow inherits Window {
         }
 
         // ── Missing Sync Modal Dialog ─────────────────────────
-        Rectangle {
-            width: 100%; height: 100%; background: Theme.scrim_strong;
-            opacity: root.show_missing_dialog ? 1.0 : 0.0;
-            visible: self.opacity > 0.01;
-            animate opacity { duration: 200ms; easing: ease-out; }
-
-            TouchArea {}
+        if show_missing_dialog: TouchArea {
+            width: 100%;
+            height: 100%;
+            scroll-event(event) => { return accept; }
 
             Rectangle {
-                width: 360px;
-                height: 220px;
+                width: 100%; height: 100%; background: Theme.scrim_strong;
+                opacity: root.show_missing_dialog ? 1.0 : 0.0;
+                animate opacity { duration: 200ms; easing: ease-out; }
+            }
+
+            Rectangle {
+                width: 320px;
+                height: missing_content.preferred-height;
                 background: Theme.bg;
                 border-radius: 12px;
                 border-width: 1px;
                 border-color: Theme.surface;
-                drop-shadow-blur: 15px; drop-shadow-color: Theme.shadow;
+                drop-shadow-blur: 15px;
+                drop-shadow-color: Theme.shadow;
 
-                VerticalLayout {
+                missing_content := VerticalLayout {
                     padding: 24px;
                     spacing: 16px;
                     alignment: center;
 
-                    Text { text: "Klasör Bulunamadı"; color: Theme.text; font-size: 1.1rem; font-weight: 700; horizontal-alignment: center; }
-                    Text { text: root.missing_sync_body; color: Theme.text_muted; font-size: 0.85rem; horizontal-alignment: center; wrap: word-wrap; }
+                    Text { text: "Klasör Bulunamadı"; font-size: 1.2rem; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+                    Text { text: root.missing_sync_body; font-size: 0.9rem; color: Theme.text_muted; horizontal-alignment: center; wrap: word-wrap; }
 
                     HorizontalLayout {
-                        spacing: 15px;
+                        spacing: 16px;
                         alignment: center;
-                        ModernButton { text: "Sync'i Sil"; width: 120px; clicked => { root.missing_remove(root.missing_sync_id); root.show_missing_dialog = false; } }
-                        Rectangle {
-                            width: 120px; height: 40px; border-radius: 8px; background: ta_reup.pressed ? Theme.accent_hover : (ta_reup.has-hover ? Theme.accent : Theme.accent);
-                            Text { text: "Yeniden Yükle"; color: Theme.on_accent; font-size: 0.95rem; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                            ta_reup := TouchArea { clicked => { root.missing_reupload(root.missing_sync_id); root.show_missing_dialog = false; } }
+                        height: 40px;
+                        DarkButton {
+                            text: Tr.cancel;
+                            width: 120px;
+                            clicked => { root.show_missing_dialog = false; }
+                        }
+                        DangerButton {
+                            text: Tr.remove;
+                            width: 130px;
+                            clicked => { root.missing_remove(root.missing_sync_id); root.show_missing_dialog = false; }
                         }
                     }
                 }
