@@ -265,6 +265,9 @@ fn remove_local_sync(
 
 /// Drive'daki sync klasörünü ve anahtar kaydını siler.
 async fn delete_drive_sync(folder_id: &str) -> Result<(), String> {
+    if folder_id.is_empty() {
+        return Ok(());
+    }
     let token = sync_core::auth::get_drive_token(false)
         .await
         .map_err(|e| i18n::tf("err_drive_login_needed", &[("e", &e.to_string())]))?;
