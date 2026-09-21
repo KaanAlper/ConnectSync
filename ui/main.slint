@@ -1872,7 +1872,10 @@ export component MainWindow inherits Window {
                         DarkButton {
                             text: Tr.cancel;
                             width: 120px;
-                            clicked => { root.show_delete_dialog = false; }
+                            clicked => { 
+                                root.resume_sync_after_dialog(root.delete_target_id);
+                                root.show_delete_dialog = false; 
+                            }
                         }
                         DangerButton {
                             text: Tr.remove;
