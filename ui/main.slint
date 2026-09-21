@@ -661,9 +661,11 @@ export component MainWindow inherits Window {
 
                 if root.sync_folders.length > 0: Flickable {
                     width: 100%;
+                    vertical-stretch: 1;
                     viewport-width: self.width;
                     VerticalLayout {
                         spacing: 8px;
+                        padding-bottom: 10px;
                         for folder in root.sync_folders : HorizontalLayout {
                             padding-left: 20px;
                             padding-right: 20px;
@@ -742,6 +744,10 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
+
+                // Liste altı ayırıcı çizgi + alt çubukla boşluk (ayarlar sayfasıyla aynı)
+                if root.sync_folders.length > 0: Rectangle { height: 1px; background: #313244; }
+                if root.sync_folders.length > 0: Rectangle { height: 12px; }
             }
 
             // ── Sync kodu giriş dialogu
@@ -961,6 +967,9 @@ export component MainWindow inherits Window {
                     }
                 }
             }
+
+            // Alttaki kesilme çizgisi (üstteki ayırıcıyla aynı)
+            Rectangle { height: 1px; background: #313244; }
         }
 
         // ── Active Sync Mini Drawer (Right edge) ─────────────────────────
