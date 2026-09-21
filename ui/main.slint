@@ -3,6 +3,9 @@ import { Theme } from "theme.slint";
 
 // Çeviri metinleri — değerler Rust tarafında (i18n.rs + locales/*.json) doldurulur
 export global Tr {
+    out property <string> missing_title: "Klasör Bulunamadı";
+    out property <string> missing_upload: "Yeniden Yükle";
+    out property <string> missing_remove: "Bağlantıyı Kaldır";
     in property <string> settings;
     in property <string> section_this_pc: "Bu bilgisayarda aktif olarak eşitlenenler";
     in property <string> section_on_drive: "Drive'da olup bu bilgisayara eklenmemiş olanlar";
@@ -385,6 +388,7 @@ export component MainWindow inherits Window {
     callback confirm_delete_sync(string, bool);
     callback missing_reupload(string);
     callback missing_remove(string);
+    callback missing_upload(string);
 
     callback watch_changes_toggled(bool);
     callback auto_gc_toggled(bool);
@@ -2056,22 +2060,28 @@ export component MainWindow inherits Window {
                     spacing: 16px;
                     alignment: center;
 
-                    Text { text: "Klasör Bulunamadı"; font-size: 1.2rem; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+                    Text { text: Tr.missing_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
                     Text { text: root.missing_sync_body; font-size: 0.9rem; color: Theme.text_muted; horizontal-alignment: center; wrap: word-wrap; }
 
                     HorizontalLayout {
                         spacing: 16px;
                         alignment: center;
                         height: 40px;
-                        DarkButton {
-                            text: Tr.cancel;
-                            width: 120px;
-                            clicked => { root.show_missing_dialog = false; }
+                        ModernButton {
+                            text: Tr.missing_upload;
+                            width: 140px;
+                            clicked => { 
+                                root.missing_upload(root.missing_sync_id); 
+                                root.show_missing_dialog = false; 
+                            }
                         }
                         DangerButton {
-                            text: Tr.remove;
-                            width: 130px;
-                            clicked => { root.missing_remove(root.missing_sync_id); root.show_missing_dialog = false; }
+                            text: Tr.missing_remove;
+                            width: 140px;
+                            clicked => { 
+                                root.missing_remove(root.missing_sync_id); 
+                                root.show_missing_dialog = false; 
+                            }
                         }
                     }
                 }

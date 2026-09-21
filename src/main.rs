@@ -622,6 +622,16 @@ fn setup_ui(
         }
     });
 
+    let ui_weak_missing_up = ui.as_weak();
+    let app_state_missing_up = app_state.clone();
+    ui.on_missing_upload(move |id| {
+        drive_missing::reupload(
+            ui_weak_missing_up.clone(),
+            app_state_missing_up.clone(),
+            id.to_string(),
+        );
+    });
+
 
     ui.on_remove_sync_folder(move |id| {
         remove_local_sync(&ui_remove, &app_state_remove, id.as_str());

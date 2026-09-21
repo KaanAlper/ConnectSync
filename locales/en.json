@@ -100,5 +100,9 @@
   "update_failed_title": "Update failed",
   "update_latest_title": "You're up to date",
   "update_latest_body": "ConnectSync {cur} is the latest version.",
-  "update_dev_note": "(Development build: files were not replaced; restarting reopens the same version.)"
+  "update_dev_note": "(Development build: files were not replaced; restarting reopens the same version.)",
+  "missing_title": "Folder Not Found",
+  "missing_body": "The folder '{name}' was deleted from Google Drive or access was revoked.",
+  "missing_upload": "Re-Upload",
+  "missing_remove": "Remove Sync"
 }

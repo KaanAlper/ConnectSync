@@ -100,5 +100,9 @@
   "update_failed_title": "Güncelleme başarısız",
   "update_latest_title": "Güncelsin",
   "update_latest_body": "ConnectSync {cur} en son sürüm.",
-  "update_dev_note": "(Geliştirme derlemesi: dosyalar değiştirilmedi, yeniden başlatma aynı sürümü açar.)"
+  "update_dev_note": "(Geliştirme derlemesi: dosyalar değiştirilmedi, yeniden başlatma aynı sürümü açar.)",
+  "missing_title": "Klasör Bulunamadı",
+  "missing_body": "'{name}' klasörü Google Drive'dan silinmiş veya erişiminiz iptal edilmiş.",
+  "missing_upload": "Yeniden Yükle",
+  "missing_remove": "Bağlantıyı Kaldır"
 }
