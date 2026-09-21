@@ -127,6 +127,6 @@
     "err_signed_in_as": "ログイン中の Google アカウント：{account}",
     "err_code_trashed": "このフォルダーは Drive のゴミ箱にあります。ゴミ箱から復元すると接続できます。",
     "drive_access_label": "Drive への完全アクセス（他の人との共有用）",
-    "drive_access_hint": "オフの間は ConnectSync 自身が作成したフォルダーにのみアクセスでき、別の Google アカウントの同期コードでは接続できません。オンにするとアプリは Drive 全体にアクセスでき、再ログインを求めます。Google の承認が必要になる場合があります。",
+    "drive_access_hint": "オフの間は ConnectSync 自身が作成したフォルダーにのみアクセスでき、別の Google アカウントの同期コードでは接続できません。オンにするとアプリは Drive 全体にアクセスでき、再ログインを求めます。Google の承認が必要になる場合があります。 オフにすると、完全アクセスのセッションはこのコンピューターから削除されます。",
     "err_delete_not_connectsync": "ConnectSync のフォルダーではないようです。安全のため Drive から削除しませんでした。"
 }

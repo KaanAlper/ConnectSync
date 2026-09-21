@@ -539,7 +539,7 @@ fn setup_ui(
 
     // Tema anında arayüzde uygulanır (Theme.dark çift yönlü bağlı); burada yalnızca kalıcı kılınır.
     // Tüm Drive yetkisi: ayar kaydedilir; yeni profil için önbellekte belirteç yoksa (kapsam değişti)
-    // giriş ekranına dönülür. Belirteçler SİLİNMEZ: eski profile dönmek yeniden giriş istemez.
+    // giriş ekranına dönülür. Kapatılınca tam yetkili belirteç silinir; dar profilinki korunur.
     let app_state_access = app_state.clone();
     let ui_weak_access = ui.as_weak();
     ui.on_drive_access_toggled(move |full| {
@@ -547,6 +547,11 @@ fn setup_ui(
             "Drive yetki ayarı kaydedilemedi",
             sync_core::config::AppConfig::update(|c| c.drive_full_access = full),
         );
+        // En az yetki: tüm Drive'a erişen belirteç, özellik kapatılınca bu bilgisayarda TUTULMAZ. Açarken
+        // yeniden giriş istenir; kullanıcı bunu bilerek seçmiş olur.
+        if !full {
+            sync_core::auth::forget_token(connectsync_core::scopes::DriveAccess::Full);
+        }
         if !sync_core::auth::is_token_cached() {
             stop_all_syncs(&app_state_access);
             reset_ui_to_login(&ui_weak_access, &app_state_access);

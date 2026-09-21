@@ -114,12 +114,19 @@ pub fn is_token_cached() -> bool {
     }
 }
 
+/// Bir yetki profilinin belirtecini bu bilgisayarın anahtarlığından siler. Google tarafında İPTAL ETMEZ:
+/// aynı istemcinin diğer profilinin belirteci de aynı Google iznine bağlı olabilir; kullanıcı erişimi
+/// tamamen kaldırmak isterse Google Hesap izinlerinden yapar. (Kayıt yoksa zaten yapılacak bir şey yok.)
+pub fn forget_token(access: DriveAccess) {
+    if let Ok(entry) = Entry::new("ConnectSync", token_entry(access)) {
+        let _ = entry.delete_credential();
+    }
+}
+
 pub fn logout() {
     // Çıkışta İKİ profilin belirteci de silinir.
     for access in [DriveAccess::AppOnly, DriveAccess::Full] {
-        if let Ok(entry) = Entry::new("ConnectSync", token_entry(access)) {
-            let _ = entry.delete_credential();
-        }
+        forget_token(access);
     }
     if let Ok(entry) = Entry::new("ConnectSync", OLD_TOKEN_ENTRY) {
         let _ = entry.delete_credential();

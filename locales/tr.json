@@ -127,6 +127,6 @@
     "err_signed_in_as": "Bağlı Google hesabı: {account}",
     "err_code_trashed": "Bu klasör Drive'ın çöp kutusunda. Çöp kutusundan geri yüklersen bağlanabilirsin.",
     "drive_access_label": "Başkalarıyla paylaşım için tüm Drive erişimi",
-    "drive_access_hint": "Kapalıyken yalnızca ConnectSync'in kendi oluşturduğu klasörlere erişilir; başka bir Google hesabının sync koduyla bağlanılamaz. Açınca uygulama Drive'ının tamamına erişebilir ve yeniden giriş yapmanı ister. Google'ın onayı gerekebilir.",
+    "drive_access_hint": "Kapalıyken yalnızca ConnectSync'in kendi oluşturduğu klasörlere erişilir; başka bir Google hesabının sync koduyla bağlanılamaz. Açınca uygulama Drive'ının tamamına erişebilir ve yeniden giriş yapmanı ister. Google'ın onayı gerekebilir. Kapatınca tam erişimli oturum bu bilgisayardan silinir.",
     "err_delete_not_connectsync": "Bu klasör bir ConnectSync klasörü gibi görünmüyor; güvenlik için Drive'dan silinmedi."
 }

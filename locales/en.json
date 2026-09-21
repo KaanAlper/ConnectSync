@@ -127,6 +127,6 @@
     "err_signed_in_as": "Signed-in Google account: {account}",
     "err_code_trashed": "This folder is in Drive's trash. Restore it from the trash and you can connect.",
     "drive_access_label": "Full Drive access (to share with others)",
-    "drive_access_hint": "When off, only folders ConnectSync created itself are reachable; you can't connect with another Google account's sync code. When on, the app can access your entire Drive and asks you to sign in again. Google approval may be required.",
+    "drive_access_hint": "When off, only folders ConnectSync created itself are reachable; you can't connect with another Google account's sync code. When on, the app can access your entire Drive and asks you to sign in again. Google approval may be required. Turning it off removes the full-access session from this computer.",
     "err_delete_not_connectsync": "This doesn't look like a ConnectSync folder; it was not deleted from Drive for safety."
 }

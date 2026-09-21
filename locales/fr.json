@@ -127,6 +127,6 @@
     "err_signed_in_as": "Compte Google connecté : {account}",
     "err_code_trashed": "Ce dossier est dans la corbeille de Drive. Restaurez-le depuis la corbeille pour pouvoir vous connecter.",
     "drive_access_label": "Accès complet à Drive (pour partager avec d'autres)",
-    "drive_access_hint": "Désactivé, seuls les dossiers créés par ConnectSync sont accessibles ; impossible de se connecter avec le code d'un autre compte Google. Activé, l'application peut accéder à tout votre Drive et vous demande de vous reconnecter. Une validation de Google peut être requise.",
+    "drive_access_hint": "Désactivé, seuls les dossiers créés par ConnectSync sont accessibles ; impossible de se connecter avec le code d'un autre compte Google. Activé, l'application peut accéder à tout votre Drive et vous demande de vous reconnecter. Une validation de Google peut être requise. En le désactivant, la session à accès complet est supprimée de cet ordinateur.",
     "err_delete_not_connectsync": "Ceci ne ressemble pas à un dossier ConnectSync ; par sécurité, il n'a pas été supprimé de Drive."
 }
