@@ -83,6 +83,8 @@ struct FileList {
 #[derive(Deserialize)]
 struct FileEntry {
     id: String,
+    // Bazı sorgular sadece `files(id)` ister; bu yüzden name yoksa boş kalsın
+    #[serde(default)]
     name: String,
     #[serde(rename = "createdTime")]
     created_time: Option<String>,

@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox, LineEdit, ScrollView, ComboBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, LineEdit, ComboBox } from "std-widgets.slint";
 
 // Çeviri metinleri — değerler Rust tarafında (i18n.rs + locales/*.json) doldurulur
 export global Tr {
@@ -280,15 +280,15 @@ export component MainWindow inherits Window {
         key-pressed(event) => {
             if (event.text == "\u{001b}") {
                 if (root.show_settings) {
-                    root.show_settings = false;
+                    root.show_settings = false; root.error_text = "";
                     return accept;
                 }
                 if (root.show_my_syncs) {
-                    root.show_my_syncs = false;
+                    root.show_my_syncs = false; root.error_text = "";
                     return accept;
                 }
                 if (root.show_connect_dialog) {
-                    root.show_connect_dialog = false;
+                    root.show_connect_dialog = false; root.error_text = "";
                     return accept;
                 }
             }
@@ -406,7 +406,7 @@ export component MainWindow inherits Window {
                     alignment: center;
                     IconButton {
                         icon: @image-url("emojis/back.svg");
-                        clicked => { root.show_my_syncs = false; }
+                        clicked => { root.show_my_syncs = false; root.error_text = ""; }
                     }
                 }
 
@@ -531,12 +531,12 @@ export component MainWindow inherits Window {
 
                         DarkButton {
                             text: Tr.connect_to_code;
-                            clicked => { root.show_connect_dialog = true; }
+                            clicked => { root.show_connect_dialog = true; root.error_text = ""; }
                         }
 
                         ModernButton {
                             text: Tr.my_syncs;
-                            clicked => { root.show_my_syncs = true; root.scan_cloud_syncs(); }
+                            clicked => { root.show_my_syncs = true; root.error_text = ""; root.scan_cloud_syncs(); }
                         }
                     }
                 }
@@ -659,7 +659,7 @@ export component MainWindow inherits Window {
                     Rectangle { height: 40px; }
                 }
 
-                if root.sync_folders.length > 0: ScrollView {
+                if root.sync_folders.length > 0: Flickable {
                     width: 100%;
                     viewport-width: self.width;
                     VerticalLayout {
@@ -756,12 +756,12 @@ export component MainWindow inherits Window {
                     alignment: center;
                     sync_dialog := SyncCodeDialog {
                         confirmed(code) => {
-                            root.show_connect_dialog = false;
+                            root.show_connect_dialog = false; root.error_text = "";
                             root.connect_to_sync(code);
                             sync_dialog.input_code = "";
                         }
                         cancelled => {
-                            root.show_connect_dialog = false;
+                            root.show_connect_dialog = false; root.error_text = "";
                             sync_dialog.input_code = "";
                         }
                     }
@@ -773,15 +773,21 @@ export component MainWindow inherits Window {
         if root.error_text != "": Rectangle {
             background: #f38ba820;
             border-radius: 4px;
-            height: 28px;
+            height: 44px;
             Text {
+                x: 8px;
+                width: parent.width - 16px;
+                height: parent.height;
                 text: root.error_text;
                 color: #f38ba8;
-                font-size: 0.78rem;
+                font-size: 0.75rem;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+                wrap: word-wrap;
                 overflow: elide;
             }
+            // Tıklayınca kapat
+            TouchArea { clicked => { root.error_text = ""; } }
         }
 
         // ── Absolute Bottom Bar ─────────────────────────────────
@@ -842,56 +848,12 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Modal Quit Dialog overlay
-    Rectangle {
-        width: 100%;
-        height: 100%;
-        background: #11111be6;
-        opacity: root.show_quit_dialog ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 200ms; easing: ease-out; }
-
-        TouchArea {}
-
-        Rectangle {
-            width: 320px;
-            height: 160px;
-            background: #1e1e2e;
-            border-radius: 12px;
-            border-width: 1px;
-            border-color: #313244;
-
-            VerticalLayout {
-                padding: 20px;
-                spacing: 15px;
-                alignment: center;
-
-                Text { text: Tr.quit_title; color: #cdd6f4; font-size: 1.1rem; font-weight: 600; horizontal-alignment: center; }
-                Text { text: Tr.quit_body; color: #a6adc8; font-size: 0.85rem; horizontal-alignment: center; }
-
-                HorizontalLayout {
-                    spacing: 15px;
-                    alignment: center;
-                    ModernButton { text: Tr.cancel; width: 100px; clicked => { root.show_quit_dialog = false; } }
-                    Rectangle {
-                        width: 100px;
-                        height: 40px;
-                        border-radius: 8px;
-                        background: ta_quit.pressed ? #eba0ac : (ta_quit.has-hover ? #f38ba8 : #f38ba8);
-                        Text { text: Tr.quit; color: #11111b; font-size: 0.95rem; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                        ta_quit := TouchArea { clicked => { root.fully_quit_requested(); } }
-                    }
-                }
-            }
-        }
-    }
-
         
         // ── Settings Screen ─────────────────────────
         if show_settings: VerticalLayout {
             spacing: 16px;
             padding: 30px;
-            alignment: start;
+            padding-bottom: 55px;
             
             HorizontalLayout {
                 height: 40px;
@@ -901,7 +863,7 @@ export component MainWindow inherits Window {
                     alignment: center;
                     IconButton {
                         icon: @image-url("emojis/back.svg");
-                        clicked => { root.show_settings = false; }
+                        clicked => { root.show_settings = false; root.error_text = ""; }
                     }
                 }
 
@@ -918,9 +880,9 @@ export component MainWindow inherits Window {
             
             Rectangle { height: 1px; background: #313244; }
 
-            ScrollView {
+            Flickable {
                 width: 100%;
-                height: 100%;
+                vertical-stretch: 1;
                 viewport-width: self.width;
                 VerticalLayout {
                     spacing: 16px;
@@ -1159,8 +1121,51 @@ export component MainWindow inherits Window {
             height: 32px;
             icon: @image-url("emojis/settings.svg");
             clicked => {
-                root.show_settings = true;
+                root.show_settings = true; root.error_text = "";
             }
         }
 
+    // Modal Quit Dialog overlay (en üstte çizilmesi için dosyanın sonunda)
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #11111be6;
+        opacity: root.show_quit_dialog ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: 200ms; easing: ease-out; }
+
+        TouchArea {}
+
+        Rectangle {
+            width: 320px;
+            height: 160px;
+            background: #1e1e2e;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #313244;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 15px;
+                alignment: center;
+
+                Text { text: Tr.quit_title; color: #cdd6f4; font-size: 1.1rem; font-weight: 600; horizontal-alignment: center; }
+                Text { text: Tr.quit_body; color: #a6adc8; font-size: 0.85rem; horizontal-alignment: center; }
+
+                HorizontalLayout {
+                    spacing: 15px;
+                    alignment: center;
+                    ModernButton { text: Tr.cancel; width: 100px; clicked => { root.show_quit_dialog = false; } }
+                    Rectangle {
+                        width: 100px;
+                        height: 40px;
+                        border-radius: 8px;
+                        background: ta_quit.pressed ? #eba0ac : (ta_quit.has-hover ? #f38ba8 : #f38ba8);
+                        Text { text: Tr.quit; color: #11111b; font-size: 0.95rem; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                        ta_quit := TouchArea { clicked => { root.fully_quit_requested(); } }
+                    }
+                }
+            }
+        }
+    }
 }

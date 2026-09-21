@@ -38,6 +38,22 @@ slint::include_modules!();
 mod sync_core;
 mod i18n;
 
+/// Hata çubuğunu gösterir ve 8 sn sonra (hâlâ aynı mesajsa) kendiliğinden kapatır.
+fn show_error(ui: &MainWindow, msg: slint::SharedString) {
+    ui.set_error_text(msg.clone());
+    if msg.is_empty() {
+        return;
+    }
+    let weak = ui.as_weak();
+    slint::Timer::single_shot(std::time::Duration::from_secs(8), move || {
+        if let Some(ui) = weak.upgrade() {
+            if ui.get_error_text() == msg {
+                ui.set_error_text("".into());
+            }
+        }
+    });
+}
+
 /// Çeviriyi doğrudan Slint string'ine çevirir.
 fn tr_ss(key: &str) -> slint::SharedString {
     i18n::t(key).into()
@@ -210,7 +226,7 @@ fn setup_ui(
                         if let Some(ui) = ui_weak2.upgrade() {
                             ui.set_is_logging_in(false);
                             let ui_w3 = ui_weak2.clone();
-                            ui.set_error_text(msg.as_str().into());
+                            show_error(&ui, msg.as_str().into());
                         }
                     });
                 }
@@ -302,7 +318,7 @@ fn setup_ui(
                                 }
                             }
                         }
-                        Err(e) => ui.set_error_text(e.as_str().into()),
+                        Err(e) => show_error(&ui, e.as_str().into()),
                     }
                 }
             });
@@ -426,7 +442,7 @@ fn setup_ui(
         let mut raw = [0u8; 16];
         if getrandom::fill(&mut raw).is_err() {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_error_text(tr_ss("err_code_gen"));
+                show_error(&ui, tr_ss("err_code_gen"));
             }
             return;
         }
@@ -439,7 +455,7 @@ fn setup_ui(
         let mut config = sync_core::config::AppConfig::load();
         if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy().to_string()) {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_error_text(tr_ss("err_folder_exists"));
+                show_error(&ui, tr_ss("err_folder_exists"));
             }
             return;
         }
@@ -495,7 +511,7 @@ fn setup_ui(
                             let msg = i18n::tf("err_create_drive_folder", &[("e", &e.to_string())]);
                             let _ = slint::invoke_from_event_loop(move || {
                                 if let Some(ui) = ui_weak_bg.upgrade() {
-                                    ui.set_error_text(msg.as_str().into());
+                                    show_error(&ui, msg.as_str().into());
                                     ui.set_active_sync_code("".into());
                                     ui.set_active_hidden(false);
                                     ui.set_is_syncing(false);
@@ -507,7 +523,7 @@ fn setup_ui(
                 Err(_) => {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak_bg.upgrade() {
-                            ui.set_error_text(tr_ss("err_drive_login"));
+                            show_error(&ui, tr_ss("err_drive_login"));
                             ui.set_active_sync_code("".into());
                             ui.set_active_hidden(false);
                             ui.set_is_syncing(false);
@@ -525,7 +541,7 @@ fn setup_ui(
         let sync_code = sync_code.to_string().trim().to_string(); // trim eklendi
         if sync_code.len() < 8 {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_error_text(tr_ss("err_invalid_code"));
+                show_error(&ui, tr_ss("err_invalid_code"));
             }
             return;
         }
@@ -547,7 +563,7 @@ fn setup_ui(
         if let Some(ui) = ui_weak.upgrade() { update_ui_folders(&ui, &app_state_connect); }
         if let Err(e) = config.save() {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_error_text(e.as_str().into());
+                show_error(&ui, e.as_str().into());
             }
         }
 
@@ -647,7 +663,7 @@ async fn sync_loop_task(
             let msg = i18n::tf("err_token", &[("e", &e.to_string())]);
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_error_text(msg.as_str().into());
+                    show_error(&ui, msg.as_str().into());
                     ui.set_is_syncing(false);
                 }
             });
@@ -665,7 +681,7 @@ async fn sync_loop_task(
                 Err(_) => {
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_w.upgrade() {
-                            ui.set_error_text(tr_ss("err_token_invalid"));
+                            show_error(&ui, tr_ss("err_token_invalid"));
                             ui.set_is_logged_in(false);
                         }
                     });
@@ -681,7 +697,7 @@ async fn sync_loop_task(
             let msg = i18n::tf("err_drive_connect", &[("e", &e.to_string())]);
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_error_text(msg.as_str().into());
+                    show_error(&ui, msg.as_str().into());
                     ui.set_is_syncing(false);
                 }
             });
@@ -702,7 +718,7 @@ async fn sync_loop_task(
                 let msg = i18n::tf("err_create_drive_folder", &[("e", &e.to_string())]);
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak.upgrade() {
-                        ui.set_error_text(msg.as_str().into());
+                        show_error(&ui, msg.as_str().into());
                         ui.set_is_syncing(false);
                     }
                 });
@@ -733,7 +749,7 @@ async fn sync_loop_task(
             let msg = i18n::tf("err_salt", &[("e", &e.to_string())]);
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_error_text(msg.as_str().into());
+                    show_error(&ui, msg.as_str().into());
                     ui.set_is_syncing(false);
                 }
             });
@@ -754,7 +770,7 @@ async fn sync_loop_task(
             let msg = i18n::tf("err_key_derive", &[("e", &e.to_string())]);
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_error_text(msg.as_str().into());
+                    show_error(&ui, msg.as_str().into());
                     ui.set_is_syncing(false);
                 }
             });
@@ -893,7 +909,7 @@ fn update_error(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppStat
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(ui) = uw.upgrade() {
             update_ui_folders(&ui, &app_state_clone);
-            ui.set_error_text(err.as_str().into()); // Show global toast as well if needed
+            show_error(&ui, err.as_str().into()); // Show global toast as well if needed
         }
     });
 }
