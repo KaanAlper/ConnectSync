@@ -34,7 +34,7 @@
     "section_system": "Système et mises à jour",
     "remove_sync_title": "Supprimer la synchronisation",
     "remove_sync_body": "Voulez-vous retirer ce dossier de la liste ?",
-    "delete_from_drive": "Supprimer aussi les données sur Drive",
+    "delete_from_drive": "Déplacer aussi les données de Drive vers la corbeille",
     "remove": "Retirer",
     "update_ready_title": "Mise à jour prête !",
     "update_ready_body": "Une nouvelle version a été téléchargée en arrière-plan. Voulez-vous redémarrer ConnectSync pour l'appliquer ?",
@@ -127,5 +127,6 @@
     "err_signed_in_as": "Compte Google connecté : {account}",
     "err_code_trashed": "Ce dossier est dans la corbeille de Drive. Restaurez-le depuis la corbeille pour pouvoir vous connecter.",
     "drive_access_label": "Accès complet à Drive (pour partager avec d'autres)",
-    "drive_access_hint": "Désactivé, seuls les dossiers créés par ConnectSync sont accessibles ; impossible de se connecter avec le code d'un autre compte Google. Activé, l'application peut accéder à tout votre Drive et vous demande de vous reconnecter. Une validation de Google peut être requise."
+    "drive_access_hint": "Désactivé, seuls les dossiers créés par ConnectSync sont accessibles ; impossible de se connecter avec le code d'un autre compte Google. Activé, l'application peut accéder à tout votre Drive et vous demande de vous reconnecter. Une validation de Google peut être requise.",
+    "err_delete_not_connectsync": "Ceci ne ressemble pas à un dossier ConnectSync ; par sécurité, il n'a pas été supprimé de Drive."
 }

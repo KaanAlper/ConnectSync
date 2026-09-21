@@ -34,7 +34,7 @@
     "section_system": "Sistema y actualizaciones",
     "remove_sync_title": "Quitar sincronización",
     "remove_sync_body": "¿Quieres quitar esta carpeta de la lista?",
-    "delete_from_drive": "Eliminar también los datos en Drive",
+    "delete_from_drive": "Mover también los datos de Drive a la papelera",
     "remove": "Quitar",
     "update_ready_title": "¡Actualización lista!",
     "update_ready_body": "Se descargó una nueva versión en segundo plano. ¿Quieres reiniciar ConnectSync para aplicarla?",
@@ -127,5 +127,6 @@
     "err_signed_in_as": "Cuenta de Google conectada: {account}",
     "err_code_trashed": "Esta carpeta está en la papelera de Drive. Restáurala desde la papelera y podrás conectarte.",
     "drive_access_label": "Acceso completo a Drive (para compartir con otros)",
-    "drive_access_hint": "Desactivado, solo se accede a las carpetas que ConnectSync creó; no puedes conectarte con el código de otra cuenta de Google. Activado, la app puede acceder a todo tu Drive y te pedirá iniciar sesión de nuevo. Puede requerirse aprobación de Google."
+    "drive_access_hint": "Desactivado, solo se accede a las carpetas que ConnectSync creó; no puedes conectarte con el código de otra cuenta de Google. Activado, la app puede acceder a todo tu Drive y te pedirá iniciar sesión de nuevo. Puede requerirse aprobación de Google.",
+    "err_delete_not_connectsync": "Esto no parece una carpeta de ConnectSync; por seguridad no se eliminó de Drive."
 }

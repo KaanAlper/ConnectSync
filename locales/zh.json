@@ -34,7 +34,7 @@
     "section_system": "系统与更新",
     "remove_sync_title": "移除同步",
     "remove_sync_body": "要将此文件夹从列表中移除吗？",
-    "delete_from_drive": "同时删除 Drive 上的数据",
+    "delete_from_drive": "同时将 Drive 中的数据移到回收站",
     "remove": "移除",
     "update_ready_title": "更新已就绪！",
     "update_ready_body": "新版本已在后台下载完成。要重新启动 ConnectSync 以应用更新吗？",
@@ -127,5 +127,6 @@
     "err_signed_in_as": "已登录的 Google 账号：{account}",
     "err_code_trashed": "此文件夹在 Drive 回收站中。从回收站还原后即可连接。",
     "drive_access_label": "完整 Drive 访问权限（用于与他人共享）",
-    "drive_access_hint": "关闭时只能访问 ConnectSync 自己创建的文件夹，无法使用其他 Google 账号的同步代码连接。开启后应用可访问你的整个 Drive，并会要求重新登录。可能需要 Google 审核。"
+    "drive_access_hint": "关闭时只能访问 ConnectSync 自己创建的文件夹，无法使用其他 Google 账号的同步代码连接。开启后应用可访问你的整个 Drive，并会要求重新登录。可能需要 Google 审核。",
+    "err_delete_not_connectsync": "这看起来不是 ConnectSync 文件夹；出于安全考虑，未从 Drive 中删除。"
 }

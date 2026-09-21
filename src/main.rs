@@ -333,11 +333,16 @@ async fn delete_drive_sync(folder_id: &str) -> Result<(), String> {
         .await
         .map_err(|e| i18n::tf("err_drive_login_needed", &[("e", &e.to_string())]))?;
     let drive = sync_core::drive::DriveClient::new(token, None).map_err(|e| e.to_string())?;
-    drive
-        .delete_file(folder_id)
-        .await
-        .map_err(|e| i18n::tf("err_delete_drive", &[("e", &e.to_string())]))?;
-    let _ = drive.remove_sync_key(folder_id).await;
+    let err = |e: sync_core::drive::DriveError| i18n::tf("err_delete_drive", &[("e", &e.to_string())]);
+    // Sync koduyla gelen ID başka bir klasörü gösteriyor olabilir; `drive` yetkisiyle uygulama tüm Drive'a
+    // dokunabildiği için silmeden ÖNCE bunun gerçekten bir ConnectSync klasörü olduğunu doğrula.
+    match drive.folder_info(folder_id).await.map_err(err)? {
+        None => {} // Drive'da zaten yok (başka yerden silinmiş): yalnızca anahtar kaydı temizlenir
+        Some(info) if !info.is_connectsync_folder() => return Err(i18n::t("err_delete_not_connectsync")),
+        // KALICI silme değil, çöp kutusu: yanlışlık olursa Drive'dan geri yüklenebilir.
+        Some(_) => drive.trash_file(folder_id).await.map_err(err)?,
+    }
+    log_failure("Anahtar kaydı silinemedi", drive.remove_sync_key(folder_id).await);
     Ok(())
 }
 

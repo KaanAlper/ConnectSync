@@ -293,7 +293,7 @@ impl DriveClient {
         let url = format!(
             "{API}/files/{}?fields={}",
             urlencoding::encode(folder_id),
-            urlencoding::encode("name,trashed,appProperties")
+            urlencoding::encode("name,trashed,appProperties,mimeType")
         );
         match self.send(|c| c.get(&url)).await {
             Ok(resp) => Ok(Some(resp.json().await?)),
@@ -600,9 +600,20 @@ impl DriveClient {
     }
 
     /// Drive'dan bir dosyayı ID ile kalıcı olarak siler. GC için kullanılır.
+    /// KALICI siler (çöp kutusuna gitmez). Yalnızca sync klasörünün İÇİNDEKİ şifreli parçaları temizlemek
+    /// (GC) için kullanılır; kullanıcının klasörleri için `trash_file`.
     pub async fn delete_file(&self, file_id: &str) -> Result<(), DriveError> {
         let url = format!("{API}/files/{}", urlencoding::encode(file_id));
         self.send(|c| c.delete(&url)).await?;
+        Ok(())
+    }
+
+    /// Dosya/klasörü ÇÖP KUTUSUNA taşır (geri alınabilir). Kullanıcıya ait klasörleri silerken bunu kullan;
+    /// `delete_file` KALICI siler.
+    pub async fn trash_file(&self, file_id: &str) -> Result<(), DriveError> {
+        let url = format!("{API}/files/{}?fields=id", urlencoding::encode(file_id));
+        let body = json!({ "trashed": true });
+        self.send(|c| c.patch(&url).json(&body)).await?;
         Ok(())
     }
 
@@ -669,6 +680,8 @@ pub struct FolderInfo {
     pub trashed: bool,
     #[serde(rename = "appProperties", default)]
     pub app_properties: Option<HashMap<String, String>>,
+    #[serde(rename = "mimeType", default)]
+    pub mime_type: String,
 }
 
 /// `folder_info` sonucunun kullanıcıya anlamı.
@@ -693,6 +706,15 @@ pub fn folder_access(info: Option<&FolderInfo>) -> FolderAccess {
 }
 
 impl FolderInfo {
+    /// Bu bir ConnectSync sync klasörü mü? Yıkıcı işlemlerden (silme) ÖNCE doğrulanır: `drive` yetkisiyle
+    /// uygulama tüm Drive'a dokunabildiği için, sync koduyla gelen bir ID başka bir klasörü gösterse bile
+    /// silinmemeli. Klasör olmalı VE oluştururken yazdığımız işareti (`cs_name` özelliği) ya da
+    /// "ConnectSync_" adını taşımalı. Bilgi eksikse (tür gelmediyse) "değil" sayılır: emin değilsek silmeyiz.
+    pub fn is_connectsync_folder(&self) -> bool {
+        let marked = self.app_properties.as_ref().is_some_and(|p| p.contains_key(NAME_PROP));
+        self.mime_type == FOLDER_MIME && (marked || self.name.starts_with("ConnectSync_"))
+    }
+
     /// Kullanıcıya gösterilecek ad: sync oluşturulurken yazılan gerçek ad (appProperties), yoksa
     /// Drive'daki ad ("ConnectSync_<hex>" öneki atılır; aksi halde rastgele bir hex görünürdü).
     pub fn display_name(&self) -> String {
@@ -791,6 +813,43 @@ mod tests {
         assert_eq!(folder_access(Some(&live)), FolderAccess::Available);
         assert_eq!(folder_access(Some(&trashed)), FolderAccess::Trashed);
         assert_eq!(folder_access(None), FolderAccess::NotVisible);
+    }
+
+    // ── silmeden önce "bu gerçekten bir ConnectSync klasörü mü" ─────────────
+
+    const FOLDER: &str = "application/vnd.google-apps.folder";
+
+    #[test]
+    fn a_folder_with_the_creation_marker_is_a_connectsync_folder() {
+        let f = info(&format!(r#"{{"name":"Müzik","mimeType":"{FOLDER}","appProperties":{{"cs_name":"Müzik"}}}}"#));
+        assert!(f.is_connectsync_folder());
+    }
+
+    #[test]
+    fn a_folder_with_the_connectsync_prefix_is_a_connectsync_folder() {
+        let f = info(&format!(r#"{{"name":"ConnectSync_938891ca","mimeType":"{FOLDER}"}}"#));
+        assert!(f.is_connectsync_folder());
+    }
+
+    #[test]
+    fn an_unrelated_folder_is_never_deleted() {
+        for name in ["Belgelerim", "Fotoğraflar", "connectsync_lowercase", "MyConnectSync_x"] {
+            let f = info(&format!(r#"{{"name":"{name}","mimeType":"{FOLDER}"}}"#));
+            assert!(!f.is_connectsync_folder(), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_file_with_a_matching_name_is_not_a_sync_folder() {
+        let f = info(r#"{"name":"ConnectSync_938891ca","mimeType":"application/pdf"}"#);
+        assert!(!f.is_connectsync_folder());
+    }
+
+    #[test]
+    fn missing_type_information_fails_closed() {
+        // API tür alanını döndürmediyse emin olamayız → silinmez
+        assert!(!info(r#"{"name":"ConnectSync_938891ca"}"#).is_connectsync_folder());
+        assert!(!info("{}").is_connectsync_folder());
     }
 
     #[test]

@@ -34,7 +34,7 @@
     "section_system": "システムとアップデート",
     "remove_sync_title": "同期を削除",
     "remove_sync_body": "このフォルダをリストから削除しますか？",
-    "delete_from_drive": "ドライブ上のデータも削除",
+    "delete_from_drive": "Drive のデータもゴミ箱に移動",
     "remove": "削除",
     "update_ready_title": "アップデートの準備ができました！",
     "update_ready_body": "新しいバージョンをバックグラウンドでダウンロードしました。適用するために ConnectSync を再起動しますか？",
@@ -127,5 +127,6 @@
     "err_signed_in_as": "ログイン中の Google アカウント：{account}",
     "err_code_trashed": "このフォルダーは Drive のゴミ箱にあります。ゴミ箱から復元すると接続できます。",
     "drive_access_label": "Drive への完全アクセス（他の人との共有用）",
-    "drive_access_hint": "オフの間は ConnectSync 自身が作成したフォルダーにのみアクセスでき、別の Google アカウントの同期コードでは接続できません。オンにするとアプリは Drive 全体にアクセスでき、再ログインを求めます。Google の承認が必要になる場合があります。"
+    "drive_access_hint": "オフの間は ConnectSync 自身が作成したフォルダーにのみアクセスでき、別の Google アカウントの同期コードでは接続できません。オンにするとアプリは Drive 全体にアクセスでき、再ログインを求めます。Google の承認が必要になる場合があります。",
+    "err_delete_not_connectsync": "ConnectSync のフォルダーではないようです。安全のため Drive から削除しませんでした。"
 }

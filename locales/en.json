@@ -34,7 +34,7 @@
     "section_system": "System & Updates",
     "remove_sync_title": "Remove Sync",
     "remove_sync_body": "Do you want to remove this folder from the list?",
-    "delete_from_drive": "Also delete data on Drive",
+    "delete_from_drive": "Also move the data on Drive to the trash",
     "remove": "Remove",
     "update_ready_title": "Update Ready!",
     "update_ready_body": "A new version was downloaded in the background. Would you like to restart ConnectSync to apply it?",
@@ -127,5 +127,6 @@
     "err_signed_in_as": "Signed-in Google account: {account}",
     "err_code_trashed": "This folder is in Drive's trash. Restore it from the trash and you can connect.",
     "drive_access_label": "Full Drive access (to share with others)",
-    "drive_access_hint": "When off, only folders ConnectSync created itself are reachable; you can't connect with another Google account's sync code. When on, the app can access your entire Drive and asks you to sign in again. Google approval may be required."
+    "drive_access_hint": "When off, only folders ConnectSync created itself are reachable; you can't connect with another Google account's sync code. When on, the app can access your entire Drive and asks you to sign in again. Google approval may be required.",
+    "err_delete_not_connectsync": "This doesn't look like a ConnectSync folder; it was not deleted from Drive for safety."
 }
