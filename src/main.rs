@@ -534,12 +534,11 @@ fn setup_ui(
 
     // ── Drive'daki bir sync'i bu bilgisayara ekle (klasörü kullanıcı seçer) ──
     let ui_weak_add = ui.as_weak();
-    let app_state_add = app_state.clone();
+    let _app_state_add = app_state.clone();
     ui.on_add_cloud_sync(move |code, name| {
         let code = code.to_string();
         let cloud_name = name.to_string();
         let ui_weak_add = ui_weak_add.clone();
-        let app_state_add = app_state_add.clone();
         std::thread::spawn(move || {
             let Some(parent_path) = FileDialog::new()
                 .set_title(i18n::t("pick_download_folder"))
@@ -552,7 +551,7 @@ fn setup_ui(
 
             let _ = slint::invoke_from_event_loop(move || {
 
-        let mut config = sync_core::config::AppConfig::load();
+        let config = sync_core::config::AppConfig::load();
         if config.sync_folders.iter().any(|f| drive_folder_id(&f.id) == drive_folder_id(&code)) {
             return;
         }
@@ -563,7 +562,7 @@ fn setup_ui(
             return;
         }
 
-        let display_name = path
+        let _display_name = path
             .file_name()
             .and_then(|n| n.to_str())
             .map(|n| n.to_string())
@@ -662,8 +661,8 @@ fn setup_ui(
         let mut config = sync_core::config::AppConfig::load();
         
         let mut old_path = String::new();
-        let mut do_rename = false;
-        let mut code = String::new();
+        let do_rename;
+        let code;
         let mut is_new = false;
         
         if let Some(folder) = config.sync_folders.iter_mut().find(|f| f.id == id_str) {
