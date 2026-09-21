@@ -538,11 +538,14 @@ fn setup_ui(
     ui.on_add_cloud_sync(move |code, name| {
         let code = code.to_string();
         let cloud_name = name.to_string();
-
-        let Some(path) = FileDialog::new()
-            .set_title(i18n::t("pick_download_folder"))
-            .pick_folder()
-        else { return };
+        let ui_weak_add = ui_weak_add.clone();
+        let app_state_add = app_state_add.clone();
+        std::thread::spawn(move || {
+            let Some(path) = FileDialog::new()
+                .set_title(i18n::t("pick_download_folder"))
+                .pick_folder()
+            else { return };
+            let _ = slint::invoke_from_event_loop(move || {
 
         let mut config = sync_core::config::AppConfig::load();
         if config.sync_folders.iter().any(|f| drive_folder_id(&f.id) == drive_folder_id(&code)) {
@@ -578,6 +581,8 @@ fn setup_ui(
             update_ui_folders(&ui, &app_state_add);
         }
         start_sync_loop(ui_weak_add.clone(), app_state_add.clone(), code, path);
+            });
+        });
     });
 
     // ── Silme dialogu onayı: bu PC'den kaldır (+ isteğe bağlı Drive'dan sil) ──
@@ -733,10 +738,14 @@ fn setup_ui(
     let ui_weak = ui.as_weak();
     let app_state_new = app_state.clone();
     ui.on_create_new_sync(move || {
-        let Some(path) = FileDialog::new()
-            .set_title(i18n::t("pick_sync_folder"))
-            .pick_folder()
-        else { return };
+        let ui_weak = ui_weak.clone();
+        let app_state_new = app_state_new.clone();
+        std::thread::spawn(move || {
+            let Some(path) = FileDialog::new()
+                .set_title(i18n::t("pick_sync_folder"))
+                .pick_folder()
+            else { return };
+            let _ = slint::invoke_from_event_loop(move || {
 
         let mut raw = [0u8; 16];
         if getrandom::fill(&mut raw).is_err() {
@@ -834,6 +843,8 @@ fn setup_ui(
                 }
             }
         });
+            });
+        });
     });
 
     // ── Sync Koduna Bağlan ───────────────────────────────────────────────
@@ -848,10 +859,14 @@ fn setup_ui(
             return;
         }
 
-        let Some(path) = FileDialog::new()
-            .set_title(i18n::t("pick_download_folder"))
-            .pick_folder()
-        else { return };
+        let ui_weak = ui_weak.clone();
+        let app_state_connect = app_state_connect.clone();
+        std::thread::spawn(move || {
+            let Some(path) = FileDialog::new()
+                .set_title(i18n::t("pick_download_folder"))
+                .pick_folder()
+            else { return };
+            let _ = slint::invoke_from_event_loop(move || {
 
         let folder_name = path.file_name()
             .and_then(|n| n.to_str())
@@ -877,6 +892,8 @@ fn setup_ui(
         }
 
         start_sync_loop(ui_weak.clone(), app_state_connect.clone(), sync_code, path);
+            });
+        });
     });
 
     // ── Stop Sync ─────────────────────────────────────────────────────────
