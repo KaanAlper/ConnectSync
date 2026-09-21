@@ -468,6 +468,7 @@ export component MainWindow inherits Window {
         if (root.show_delete_dialog) { root.show_delete_dialog = false; return true; }
         if (root.show_missing_dialog) { root.show_missing_dialog = false; return true; }
         if (root.error_text != "") { root.error_text = ""; return true; }
+        if (root.show_edit_dialog) { root.show_edit_dialog = false; return true; }
         if (root.show_update_dialog) {
             // İndirme sürerken ve yeniden başlatma beklenirken KAPATILAMAZ. Tuş yine de tüketilir ki
             // arkadaki ekran (ayarlar vb.) Esc ile kapanmasın.
@@ -487,13 +488,14 @@ export component MainWindow inherits Window {
     /// kendi Enter'ı bozulmasın diye popup yokken tuş geçirilir.)
     pure function enter_is_captured() -> bool {
         return root.show_quit_dialog || root.show_delete_dialog || root.show_update_dialog || root.show_missing_dialog || root.error_text != ""
-            || (root.is_logged_in && root.show_connect_dialog);
+            || (root.is_logged_in && root.show_connect_dialog) || root.show_edit_dialog;
     }
 
     /// Enter: en üstteki popup'ın onay düğmesiyle aynı işi yapar.
     function handle_enter() {
         if (root.error_text != "") { root.error_text = ""; return; }
         if (root.show_missing_dialog) { root.missing_reupload(root.missing_sync_id); root.show_missing_dialog = false; return; }
+        if (root.show_edit_dialog) { return; } // Enter doesn't auto-save, but shouldn't trigger background list
         if (root.show_quit_dialog) { root.fully_quit_requested(); return; }
         if (root.show_delete_dialog) {
             root.confirm_delete_sync(root.delete_target_id, root.delete_from_cloud);
@@ -2131,10 +2133,10 @@ export component MainWindow inherits Window {
                 height: edit_content.preferred-height;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                background: Theme.surface;
-                border-radius: 16px;
+                background: Theme.bg;
+                border-radius: 12px;
                 border-width: 1px;
-                border-color: Theme.border_strong;
+                border-color: Theme.surface;
                 drop-shadow-blur: 15px;
                 drop-shadow-color: Theme.shadow;
 
