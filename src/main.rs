@@ -74,6 +74,7 @@ fn apply_language(ui: &MainWindow, lang: &str) {
         set_missing_remove => "missing_remove",
         set_edit_sync_title => "edit_sync_title",
         set_edit_name => "edit_name",
+        set_new_drive_folder_name => "new_drive_folder_name",
         set_edit_path => "edit_path",
         set_edit_change_path => "edit_change_path",
         set_edit_rename_drive => "edit_rename_drive",
@@ -700,6 +701,7 @@ fn setup_ui(
         
         if is_new {
             if let Some(ui) = ui_weak_edit_save.upgrade() {
+                ui.set_show_my_syncs(false);
                 ui.set_active_sync_code(id_str.clone().as_str().into());
                 ui.set_active_hidden(false);
                 ui.set_active_sync_folder(name_str.as_str().into());
