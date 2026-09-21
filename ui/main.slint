@@ -1779,6 +1779,7 @@ export component MainWindow inherits Window {
         
         // ── Delete Sync Modal Dialog ─────────────────────────
         if show_delete_dialog: TouchArea {
+        scroll-event(event) => { return accept; }
             width: 100%;
             height: 100%;
 
@@ -1839,6 +1840,7 @@ export component MainWindow inherits Window {
         // Durumlar: checking → available → downloading → ready | failed; ayrıca latest.
         // İndirirken ve "yeniden başlat" beklerken Esc kapatmaz (bkz. handle_escape).
         if show_update_dialog: TouchArea {
+        scroll-event(event) => { return accept; }
             width: 100%;
             height: 100%;
 
@@ -2042,6 +2044,7 @@ export component MainWindow inherits Window {
 
     // Modal Quit Dialog overlay (en üstte çizilmesi için dosyanın sonunda)
     if show_quit_dialog: TouchArea {
+        scroll-event(event) => { return accept; }
         width: 100%;
         height: 100%;
 
