@@ -1047,6 +1047,10 @@ fn setup_ui(
     let ui_weak_resume = ui.as_weak();
     ui.on_resume_sync_after_dialog(move |id| {
         let id_str = id.to_string();
+        if let Some(ui) = ui_weak_resume.upgrade() {
+            ui.set_status_text(tr_ss("status_checking"));
+            ui.set_is_syncing(true);
+        }
         let path = {
             let cfg = sync_core::config::AppConfig::load();
             cfg.sync_folders.iter().find(|f| f.id == id_str).map(|f| f.path.clone())
@@ -1294,7 +1298,7 @@ async fn sync_loop_task(
         let mut pulled = 0usize;
         tokio::select! {
             _ = &mut stop_rx => {
-                update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_stopped"), false);
+                
                 break;
             }
             res = with_phase_status(
@@ -1314,7 +1318,7 @@ async fn sync_loop_task(
         // 2. Sonra Push (Yerel -> Drive)
         tokio::select! {
             _ = &mut stop_rx => {
-                update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_stopped"), false);
+                
                 break;
             }
             _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code, pulled) => {}
@@ -1322,7 +1326,7 @@ async fn sync_loop_task(
 
         tokio::select! {
             _ = &mut stop_rx => {
-                update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_stopped"), false);
+                
                 break;
             }
             _ = interval.tick() => {}
