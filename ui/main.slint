@@ -377,6 +377,8 @@ export component MainWindow inherits Window {
     in-out property <string> edit_sync_name: "";
     in-out property <string> edit_sync_path: "";
     in-out property <bool> edit_rename_on_drive: true;
+    // Yeni sync: bağlantıyı bilenler dosyaları DEĞİŞTİREBİLSİN mi? Varsayılan hayır (salt okunur).
+    in-out property <bool> new_sync_can_write: false;
     in-out property <string> missing_sync_body: "";
 
     in-out property <string> delete_target_id: "";
@@ -407,13 +409,13 @@ export component MainWindow inherits Window {
     in-out property <string> update_progress_text: "";
 
     callback confirm_delete_sync(string, bool);
-    callback missing_reupload(string);
     callback missing_remove(string);
     callback pause_sync_for_dialog(string);
     callback resume_sync_after_dialog(string);
     callback missing_upload(string);
-    callback edit_sync_save(string, string, string, bool);
-    callback new_sync_save(string, string, bool);
+    // Kaydet callback'leri doğrulama sonucunu döndürür: false ise popup açık kalır (yazılanlar kaybolmaz).
+    callback edit_sync_save(string, string, string, bool) -> bool;
+    callback new_sync_save(string, string, bool) -> bool;
     callback edit_pick_path(string);
     callback show_edit_sync(string, string, string);
     show_edit_sync(id, name, path) => {
@@ -429,7 +431,7 @@ export component MainWindow inherits Window {
     show_new_sync(name, path) => {
         root.edit_sync_name = name;
         root.edit_sync_path = path;
-        root.edit_rename_on_drive = true;
+        root.new_sync_can_write = false;
         root.is_creating_new_sync = true;
         root.show_edit_dialog = true;
     }
@@ -479,11 +481,18 @@ export component MainWindow inherits Window {
     // Her iki işlev de en üstteki katmandan başlar: önce popup'lar, sonra ekranlar.
     // Fonksiyonlar tuş yakalayıcıdan ayrı tutuldu; davranış tek yerde okunur.
 
+    /// Silme popup'ını İPTAL eder; İptal düğmesi ve Esc ortak kullanır. Popup açılırken sync duraklatıldıysa
+    /// devam ettirir (Rust yalnızca gerçekten duraklatılmışsa yeniden başlatır). Silme onayı için değil.
+    function close_delete_dialog() {
+        root.resume_sync_after_dialog(root.delete_target_id);
+        root.show_delete_dialog = false;
+    }
+
     /// Esc: en üstteki popup'ı iptal eder ya da bir ekranı ana menüye döndürür.
     /// Bir şey yaptıysa true döner (tuş tüketilir).
     function handle_escape() -> bool {
         if (root.show_quit_dialog) { root.show_quit_dialog = false; return true; }
-        if (root.show_delete_dialog) { root.show_delete_dialog = false; return true; }
+        if (root.show_delete_dialog) { root.close_delete_dialog(); return true; }
         if (root.show_missing_dialog) { root.show_missing_dialog = false; return true; }
         if (root.error_text != "") { root.error_text = ""; return true; }
         if (root.show_edit_dialog) { root.show_edit_dialog = false; return true; }
@@ -512,7 +521,7 @@ export component MainWindow inherits Window {
     /// Enter: en üstteki popup'ın onay düğmesiyle aynı işi yapar.
     function handle_enter() {
         if (root.error_text != "") { root.error_text = ""; return; }
-        if (root.show_missing_dialog) { root.missing_reupload(root.missing_sync_id); root.show_missing_dialog = false; return; }
+        if (root.show_missing_dialog) { root.missing_upload(root.missing_sync_id); root.show_missing_dialog = false; return; }
         if (root.show_edit_dialog) { return; } // Enter doesn't auto-save, but shouldn't trigger background list
         if (root.show_quit_dialog) { root.fully_quit_requested(); return; }
         if (root.show_delete_dialog) {
@@ -1872,10 +1881,7 @@ export component MainWindow inherits Window {
                         DarkButton {
                             text: Tr.cancel;
                             width: 120px;
-                            clicked => { 
-                                root.resume_sync_after_dialog(root.delete_target_id);
-                                root.show_delete_dialog = false; 
-                            }
+                            clicked => { root.close_delete_dialog(); }
                         }
                         DangerButton {
                             text: Tr.remove;
@@ -2213,15 +2219,28 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    // Rename on Drive toggle
-                    HorizontalLayout {
+                    // Yeni sync: başkaları yazabilsin mi?  /  Var olan sync: Drive'da da yeniden adlandır
+                    if root.is_creating_new_sync: HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        Switch {
+                            checked <=> root.new_sync_can_write;
+                        }
+                        Text {
+                            text: Tr.can_others_write;
+                            color: Theme.text;
+                            font-size: 0.95rem;
+                            vertical-alignment: center;
+                        }
+                    }
+                    if !root.is_creating_new_sync: HorizontalLayout {
                         spacing: 12px;
                         alignment: start;
                         Switch {
                             checked <=> root.edit_rename_on_drive;
                         }
                         Text {
-                            text: root.is_creating_new_sync ? Tr.can_others_write : Tr.edit_rename_drive;
+                            text: Tr.edit_rename_drive;
                             color: Theme.text;
                             font-size: 0.95rem;
                             vertical-alignment: center;
@@ -2244,11 +2263,14 @@ export component MainWindow inherits Window {
                             width: 120px;
                             clicked => { 
                                 if root.is_creating_new_sync {
-                                    root.new_sync_save(root.edit_sync_name, root.edit_sync_path, root.edit_rename_on_drive);
+                                    if (root.new_sync_save(root.edit_sync_name, root.edit_sync_path, root.new_sync_can_write)) {
+                                        root.show_edit_dialog = false;
+                                    }
                                 } else {
-                                    root.edit_sync_save(root.edit_sync_id, root.edit_sync_name, root.edit_sync_path, root.edit_rename_on_drive); 
+                                    if (root.edit_sync_save(root.edit_sync_id, root.edit_sync_name, root.edit_sync_path, root.edit_rename_on_drive)) {
+                                        root.show_edit_dialog = false;
+                                    }
                                 }
-                                root.show_edit_dialog = false; 
                             }
                         }
                     }

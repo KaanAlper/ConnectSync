@@ -116,5 +116,10 @@
     "can_others_write": "Others can make changes",
     "app_subtitle": "Serverless Folder Sync",
     "new_drive_folder_name": "Drive Folder Name:",
-    "status_paused": "Paused (Waiting for confirmation)"
+    "status_paused": "Paused",
+    "err_edit_name_empty": "The folder name cannot be empty.",
+    "err_edit_path_empty": "The local folder path cannot be empty.",
+    "err_path_not_dir": "The selected path is not a folder.",
+    "status_drive_missing": "Drive data was deleted",
+    "err_reupload": "Upload failed: {e}"
 }

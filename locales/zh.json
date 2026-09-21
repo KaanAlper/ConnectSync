@@ -105,5 +105,21 @@
     "create_new_sync_title": "新同步",
     "can_others_write": "允许其他人进行更改",
     "new_drive_folder_name": "Drive文件夹名称:",
-    "status_paused": "已暂停（等待确认）"
+    "status_paused": "已暂停",
+    "edit_change_path": "更改",
+    "edit_name": "文件夹名称：",
+    "edit_path": "本地路径：",
+    "edit_rename_drive": "同时在 Drive 中重命名",
+    "edit_save": "保存",
+    "edit_sync_btn": "编辑",
+    "edit_sync_title": "编辑同步",
+    "missing_body": "文件夹“{name}”已从 Google Drive 中删除，或访问权限已被撤销。",
+    "missing_remove": "移除同步",
+    "missing_title": "未找到文件夹",
+    "missing_upload": "重新上传",
+    "err_edit_name_empty": "文件夹名称不能为空。",
+    "err_edit_path_empty": "本地文件夹路径不能为空。",
+    "err_path_not_dir": "所选路径不是文件夹。",
+    "status_drive_missing": "云端数据已被删除",
+    "err_reupload": "重新上传失败：{e}"
 }

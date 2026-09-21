@@ -1,17 +1,17 @@
-// Drive'daki sync klasörü silinmişse (başka bir bilgisayardan ya da çöp kutusuna atılarak)
-use slint::ComponentHandle;
-// ham "404 File not found" hatası yerine kullanıcıya iki yol sunulur:
-//
-// - **Yeniden yükle:** Aynı anahtarla Drive'da yeni klasör açılır, bu bilgisayardaki dosyalar
-//   yeniden yüklenir. Klasör adı anahtardan türediği için başka bir bilgisayar önce
-//   davranıp aynı klasörü yeniden yarattıysa ona KATILINIR (ikinci bir kopya oluşmaz).
-//   Sync kodundaki klasör kimliği değiştiği için kod da değişir.
-// - **Sync'i sil:** Yalnızca bu bilgisayardaki eşitleme kaldırılır; yerel dosyalara dokunulmaz.
-//
-// Durum (`MissingStore`) `AppState`'te tutulur: sync döngüsü pencereyi bilmez, tray zamanlayıcısı
-// (`sync_window`) pencere varsa popup'ı açar. Kullanıcı Esc ile kapatırsa satırda "Drive'daki veri
-// silinmiş" durumu kalır; manuel eşitleme popup'ı yeniden açar.
+//! Drive'daki sync klasörü silinmişse (başka bir bilgisayardan ya da çöp kutusuna atılarak)
+//! ham "404 File not found" hatası yerine kullanıcıya iki yol sunulur:
+//!
+//! - **Yeniden yükle:** Aynı anahtarla Drive'da yeni klasör açılır, bu bilgisayardaki dosyalar
+//!   yeniden yüklenir. Klasör adı anahtardan türediği için başka bir bilgisayar önce
+//!   davranıp aynı klasörü yeniden yarattıysa ona KATILINIR (ikinci bir kopya oluşmaz).
+//!   Sync kodundaki klasör kimliği değiştiği için kod da değişir.
+//! - **Sync'i sil:** Yalnızca bu bilgisayardaki eşitleme kaldırılır; yerel dosyalara dokunulmaz.
+//!
+//! Durum (`MissingStore`) `AppState`'te tutulur: sync döngüsü pencereyi bilmez, tray zamanlayıcısı
+//! (`sync_window`) pencere varsa popup'ı açar. Kullanıcı Esc ile kapatırsa satırda "Drive'daki veri
+//! silinmiş" durumu kalır; manuel eşitleme popup'ı yeniden açar.
 
+use slint::ComponentHandle;
 use crate::sync_core::auth;
 use crate::sync_core::config::AppConfig;
 use crate::sync_core::drive::DriveClient;
@@ -170,23 +170,28 @@ async fn recreate_on_drive(code: &str) -> Result<(String, PathBuf), String> {
         .map_err(|e| i18n::tf("err_drive_login_needed", &[("e", &e.to_string())]))?;
     let drive = DriveClient::new(token, None).map_err(|e| e.to_string())?;
 
+    // Sync oluşturulurken seçilen paylaşım izni korunur. Kayıtlı değilse (bu alan eklenmeden önceki
+    // ya da koddan katılınan sync) eski davranış olan "yazılabilir" kullanılır; yeni sync'lerde
+    // varsayılan zaten salt okunurdur.
+    let can_others_write = folder.can_others_write.unwrap_or(true);
     let folder_id = drive
-        .get_or_create_folder(&drive_folder_name(&hex_key), None, true)
+        .get_or_create_folder(&drive_folder_name(&hex_key), None, can_others_write)
         .await
         .map_err(|e| i18n::tf("err_create_drive_folder", &[("e", &e.to_string())]))?;
-    let _ = drive.save_sync_key(&folder_id, &hex_key).await;
-    let _ = drive.set_folder_display_name(&folder_id, &folder.name).await;
+    // En iyi çaba: başarısız olursa akış sürer ama neden log'da görünür.
+    crate::log_failure("Drive'a anahtar kaydı yazılamadı", drive.save_sync_key(&folder_id, &hex_key).await);
+    crate::log_failure("Drive klasör adı yazılamadı", drive.set_folder_display_name(&folder_id, &folder.name).await);
     if let Some(old) = old_folder_id.filter(|old| *old != folder_id) {
-        let _ = drive.remove_sync_key(&old).await;
+        crate::log_failure("Eski anahtar kaydı silinemedi", drive.remove_sync_key(&old).await);
     }
 
     let new_code = new_code(&folder_id, &hex_key);
-    let mut config = AppConfig::load();
-    if let Some(f) = config.sync_folders.iter_mut().find(|f| f.id == code) {
-        f.id = new_code.clone();
-        f.code = new_code.clone();
-    }
-    config.save()?;
+    AppConfig::update(|c| {
+        if let Some(f) = c.sync_folders.iter_mut().find(|f| f.id == code) {
+            f.id = new_code.clone();
+            f.code = new_code.clone();
+        }
+    })?;
     Ok((new_code, PathBuf::from(folder.path)))
 }
 
@@ -208,24 +213,17 @@ fn finish_reupload(
     }
     let ui_for_update = ui_weak.clone();
     let app_state_for_update = app_state.clone();
+    let code_for_ui = new_code.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_for_update.upgrade() {
             if ui.get_active_sync_code() == old_code {
-                ui.set_active_sync_code(new_code.as_str().into());
+                ui.set_active_sync_code(code_for_ui.as_str().into());
             }
             crate::update_ui_folders(&ui, &app_state_for_update);
         }
     });
     // Döngü yeni kodla başlar: tuz üretilir, ardından tüm yerel dosyalar yüklenir.
-    // (Not: `new_code` yukarıdaki kapanışa taşındığı için yolun kendisinden yeniden okunur.)
-    let code_for_loop = AppConfig::load()
-        .sync_folders
-        .into_iter()
-        .find(|f| PathBuf::from(&f.path) == path)
-        .map(|f| f.id);
-    if let Some(code) = code_for_loop {
-        crate::start_sync_loop(ui_weak, app_state, code, path);
-    }
+    crate::start_sync_loop(ui_weak, app_state, new_code, path);
 }
 
 #[cfg(test)]

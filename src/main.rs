@@ -38,6 +38,7 @@ slint::include_modules!();
 mod sync_core;
 mod i18n;
 mod drive_missing;
+mod sync_ctl;
 mod update_ui;
 mod updater;
 
@@ -52,6 +53,29 @@ fn show_error(ui: &MainWindow, msg: slint::SharedString) {
         return;
     }
     ui.set_error_text(msg.clone());
+}
+
+/// En iyi çabayla yapılan (başarısızlığı akışı durdurmayan) bir işlemin hatasını sessizce
+/// yutmadan log'lar. Örn. Drive'a anahtar kaydı: yazılamazsa "Buluttan Bul" diğer bilgisayarlarda
+/// sync'i bulamaz; en azından nedeni log'da görünsün.
+pub(crate) fn log_failure<T, E: std::fmt::Display>(what: &str, result: Result<T, E>) {
+    if let Err(e) = result {
+        println!("{what}: {e}");
+    }
+}
+
+/// Drive'daki klasörün görünen adını en iyi çabayla günceller (arka planda); hata log'lanır.
+fn rename_drive_folder(code: String, name: String) {
+    tokio::spawn(async move {
+        let Some((folder_id, _)) = drive_missing::parse_code(&code) else { return };
+        let result = async {
+            let token = sync_core::auth::get_drive_token(false).await.map_err(|e| e.to_string())?;
+            let drive = sync_core::drive::DriveClient::new(token, None).map_err(|e| e.to_string())?;
+            drive.set_folder_display_name(folder_id, &name).await.map_err(|e| e.to_string())
+        }
+        .await;
+        log_failure("Drive klasör adı güncellenemedi", result);
+    });
 }
 
 /// Çeviriyi doğrudan Slint string'ine çevirir.
@@ -172,6 +196,8 @@ pub struct AppState {
     /// Drive'da bulunan (kod, ad) listesi; bu PC'de olmayanlar "Drive'da" bölümünde gösterilir
     pub cloud_items: Vec<(String, String)>,
     pub missing: drive_missing::MissingStore,
+    /// Hangi sync döngüsü güncel / duraklatılmış (bkz. `sync_ctl`).
+    pub ctl: sync_ctl::SyncControl,
     /// Arka plan taraması `cloud_items`'ı değiştirdi; tray zamanlayıcısı arayüzü yenileyip
     /// bayrağı temizler (pencere yoksa bir sonraki `setup_ui` zaten güncel listeyi çeker).
     pub cloud_dirty: bool,
@@ -254,10 +280,12 @@ fn remove_local_sync(
         }
         st.triggers.remove(id);
         st.folder_states.remove(id);
+        st.ctl.forget(id);
     }
-    let mut config = sync_core::config::AppConfig::load();
-    config.sync_folders.retain(|f| f.id != id);
-    let _ = config.save();
+    log_failure(
+        "Sync config'ten silinemedi",
+        sync_core::config::AppConfig::update(|c| c.sync_folders.retain(|f| f.id != id)),
+    );
     if let Some(ui) = ui_weak.upgrade() {
         update_ui_folders(&ui, app_state);
     }
@@ -551,7 +579,6 @@ fn setup_ui(
 
     // ── Drive'daki bir sync'i bu bilgisayara ekle (klasörü kullanıcı seçer) ──
     let ui_weak_add = ui.as_weak();
-    let _app_state_add = app_state.clone();
     ui.on_add_cloud_sync(move |code, name| {
         let code = code.to_string();
         let cloud_name = name.to_string();
@@ -579,12 +606,6 @@ fn setup_ui(
             return;
         }
 
-        let _display_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n.to_string())
-            .unwrap_or(cloud_name.clone());
-
         // Kaydetme işlemini edit_sync_save'e bırakıyoruz
         if let Some(ui) = ui_weak_add.upgrade() {
             ui.invoke_show_edit_sync(code.clone().into(), cloud_name.clone().into(), path.to_string_lossy().to_string().into());
@@ -599,10 +620,10 @@ fn setup_ui(
     ui.on_confirm_delete_sync(move |id, delete_from_drive| {
         let id = id.to_string();
         remove_local_sync(&ui_weak_del, &app_state_del, &id);
-        if let Some(ui) = ui_weak_del.upgrade() {
-            if ui.get_active_sync_code().as_str() == id.as_str() {
-                ui.set_active_sync_code("".into());
-            }
+        if let Some(ui) = ui_weak_del.upgrade()
+            && ui.get_active_sync_code().as_str() == id.as_str()
+        {
+            ui.set_active_sync_code("".into());
         }
 
         if delete_from_drive {
@@ -624,12 +645,6 @@ fn setup_ui(
                 });
             });
         }
-    });
-
-    let ui_weak_missing = ui.as_weak();
-    let app_state_missing = app_state.clone();
-    ui.on_missing_reupload(move |id| {
-        drive_missing::reupload(ui_weak_missing.clone(), app_state_missing.clone(), id.to_string());
     });
 
     let ui_weak_missing_rm = ui.as_weak();
@@ -675,82 +690,53 @@ fn setup_ui(
 
     let ui_weak_edit_save = ui.as_weak();
     let app_state_edit = app_state.clone();
-    ui.on_edit_sync_save(move |id, name, path, rename_on_drive| {
-        let id_str = id.to_string();
-        let name_str = name.to_string();
-        let path_str = path.to_string();
-        
-        let mut config = sync_core::config::AppConfig::load();
-        
-        let mut old_path = String::new();
-        let do_rename;
-        let code;
-        let mut is_new = false;
-        
-        if let Some(folder) = config.sync_folders.iter_mut().find(|f| f.id == id_str) {
-            old_path = folder.path.clone();
-            folder.name = name_str.clone();
-            folder.path = path_str.clone();
-            code = folder.code.clone();
-            do_rename = rename_on_drive;
-        } else {
-            is_new = true;
-            config.sync_folders.push(sync_core::config::SyncFolder {
-                id: id_str.clone(),
-                name: name_str.clone(),
-                path: path_str.clone(),
-                code: id_str.clone(),
-            });
-            code = id_str.clone();
-            do_rename = rename_on_drive;
-        }
-        
-        let _ = config.save();
-        
-        if is_new {
+    // Döner: girdi geçerli ve kaydedildi mi? false ise popup açık kalır, yazılanlar kaybolmaz.
+    ui.on_edit_sync_save(move |id, name, path, rename_on_drive| -> bool {
+        let (id, name, path) = (id.to_string(), name.trim().to_string(), path.trim().to_string());
+
+        // Doğrulama ve yazma tek kilitli işlemde: iki adım arasında başka bir yazma araya giremez.
+        let outcome = sync_core::config::AppConfig::update(|c| {
+            c.validate_sync_edit(&id, &name, &path)
+                .map(|()| c.apply_sync_edit(&id, &name, &path))
+        });
+        let applied = match outcome {
+            Ok(Ok(applied)) => applied,
+            Ok(Err(invalid)) => {
+                if let Some(ui) = ui_weak_edit_save.upgrade() {
+                    show_error(&ui, tr_ss(invalid.locale_key()));
+                }
+                return false;
+            }
+            Err(save_error) => {
+                if let Some(ui) = ui_weak_edit_save.upgrade() {
+                    show_error(&ui, save_error.as_str().into());
+                }
+                return false;
+            }
+        };
+
+        if applied.is_new {
+            // Buluttan eklenen sync: aktif sync ekranına geç ve döngüyü başlat.
             if let Some(ui) = ui_weak_edit_save.upgrade() {
                 ui.set_show_my_syncs(false);
-                ui.set_active_sync_code(id_str.clone().as_str().into());
+                ui.set_active_sync_code(id.as_str().into());
                 ui.set_active_hidden(false);
-                ui.set_active_sync_folder(name_str.as_str().into());
-                ui.set_status_text(tr_ss("status_pulling"));
-                ui.set_is_syncing(true);
+                ui.set_active_sync_folder(name.as_str().into());
             }
-            start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id_str.clone(), std::path::PathBuf::from(path_str.clone()));
+            update_status(&ui_weak_edit_save, &app_state_edit, &id, &i18n::t("status_checking"), true);
+            start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id.clone(), PathBuf::from(&path));
+        } else if applied.old_path.as_deref() != Some(path.as_str()) {
+            // Yol değişti: döngü yeni klasörle yeniden başlar (eskisi start_sync_loop içinde durdurulur).
+            start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id.clone(), PathBuf::from(&path));
         }
 
-        if old_path != "" || is_new {
-            if do_rename {
-                let name_clone = name_str.clone();
-                tokio::spawn(async move {
-                    if let Ok(token) = sync_core::auth::get_drive_token(false).await {
-                        if let Ok(drive) = sync_core::drive::DriveClient::new(token, None) {
-                            if let Some((fid, _)) = drive_missing::parse_code(&code) {
-                                let _ = drive.set_folder_display_name(fid, &name_clone).await;
-                            }
-                        }
-                    }
-                });
-            }
-            
-            if !is_new && old_path != path_str {
-                // Yol değiştiyse eski döngüyü kapatıp yenisini başlat
-                let app_state_clone = app_state_edit.clone();
-                let id_clone = id_str.clone();
-                
-                let mut st = app_state_clone.lock().unwrap();
-                if let Some(tx) = st.tasks.remove(&id_clone) {
-                    let _ = tx.send(()); 
-                }
-                drop(st);
-                
-                start_sync_loop(ui_weak_edit_save.clone(), app_state_edit.clone(), id_str.clone(), std::path::PathBuf::from(path_str.clone()));
-            }
+        if rename_on_drive {
+            rename_drive_folder(applied.code, name);
         }
-        
         if let Some(ui) = ui_weak_edit_save.upgrade() {
             update_ui_folders(&ui, &app_state_edit);
         }
+        true
     });
 
     let ui_weak_manual = ui.as_weak();
@@ -879,19 +865,21 @@ fn setup_ui(
     // ── Yeni Sync Kaydet ──────────────────────────────────────────────────
     let ui_weak = ui.as_weak();
     let app_state_new = app_state.clone();
-    ui.on_new_sync_save(move |name, path_str, can_others_write| {
+    ui.on_new_sync_save(move |name, path_str, can_others_write| -> bool {
         let ui_weak = ui_weak.clone();
         let app_state_bg = app_state_new.clone();
-        let folder_name = name.to_string();
-        let path = std::path::PathBuf::from(path_str.as_str());
+        let folder_name = name.trim().to_string();
+        let path = std::path::PathBuf::from(path_str.trim());
 
-        // Hata ayıklama vs
-        let config = sync_core::config::AppConfig::load();
-        if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
+        // Girdiyi doğrula (boş ad/yol, başka sync'te kullanılan ya da klasör olmayan yol).
+        // Hatalıysa false döner ve popup açık kalır.
+        if let Err(invalid) = sync_core::config::AppConfig::load()
+            .validate_sync_edit("", &folder_name, &path.to_string_lossy())
+        {
             if let Some(ui) = ui_weak.upgrade() {
-                show_error(&ui, tr_ss("err_folder_exists"));
+                show_error(&ui, tr_ss(invalid.locale_key()));
             }
-            return;
+            return false;
         }
 
         let mut raw = [0u8; 16];
@@ -899,7 +887,7 @@ fn setup_ui(
             if let Some(ui) = ui_weak.upgrade() {
                 show_error(&ui, tr_ss("err_code_gen"));
             }
-            return;
+            return false;
         }
         let hex_key = hex::encode(raw);
 
@@ -918,20 +906,29 @@ fn setup_ui(
                     let drive_folder_name = format!("ConnectSync_{}", &hex_key[0..8.min(hex_key.len())]);
                     match drive.get_or_create_folder(&drive_folder_name, None, can_others_write).await {
                         Ok(folder_id) => {
-                            // save keys
-                            let _ = drive.save_sync_key(&folder_id, &hex_key).await;
-                            let _ = drive.set_folder_display_name(&folder_id, &folder_name).await;
+                            // Anahtar kaydı olmazsa diğer bilgisayarlar "Buluttan Bul" ile bulamaz: sessiz kalma.
+                            log_failure("Drive'a anahtar kaydı yazılamadı", drive.save_sync_key(&folder_id, &hex_key).await);
+                            log_failure("Drive klasör adı yazılamadı", drive.set_folder_display_name(&folder_id, &folder_name).await);
 
-                            let universal_code = format!("cs-{}-{}", folder_id, hex_key);
-                            
-                            let mut config = sync_core::config::AppConfig::load();
-                            config.sync_folders.push(sync_core::config::SyncFolder { 
-                                id: universal_code.clone(), 
-                                name: folder_name.clone(), 
-                                path: path.to_string_lossy().to_string(), 
-                                code: universal_code.clone() 
+                            let universal_code = drive_missing::new_code(&folder_id, &hex_key);
+
+                            let saved = sync_core::config::AppConfig::update(|c| {
+                                c.sync_folders.push(sync_core::config::SyncFolder {
+                                    id: universal_code.clone(),
+                                    name: folder_name.clone(),
+                                    path: path.to_string_lossy().to_string(),
+                                    code: universal_code.clone(),
+                                    can_others_write: Some(can_others_write),
+                                });
                             });
-                            let _ = config.save();
+                            if let Err(e) = saved {
+                                let ui_w_err = ui_weak.clone();
+                                let _ = slint::invoke_from_event_loop(move || {
+                                    if let Some(ui) = ui_w_err.upgrade() {
+                                        show_error(&ui, e.as_str().into());
+                                    }
+                                });
+                            }
                             
                             let code_for_ui = universal_code.clone();
                             let ui_w_update = ui_weak.clone();
@@ -971,6 +968,7 @@ fn setup_ui(
                 }
             }
         });
+        true
     });
 
     // ── Sync Koduna Bağlan ───────────────────────────────────────────────
@@ -1034,12 +1032,21 @@ fn setup_ui(
     let ui_weak_pause = ui.as_weak();
     ui.on_pause_sync_for_dialog(move |id| {
         let id_str = id.to_string();
-        if let Some(tx) = app_state_pause.lock().unwrap().tasks.remove(&id_str) {
-            let _ = tx.send(()); // Görevi durdur
-        }
-        if let Some(ui) = ui_weak_pause.upgrade() {
-            ui.set_status_text(tr_ss("status_paused"));
-            ui.set_is_syncing(false);
+        // Yalnızca ÇALIŞAN bir döngü duraklatılır. İşaret, durdurma sinyalinden ÖNCE konur ki döngü
+        // kapanırken "durduruldu" yazıp "Duraklatıldı" mesajını ezmesin.
+        let paused = {
+            let mut st = app_state_pause.lock().unwrap();
+            match st.tasks.remove(&id_str) {
+                Some(tx) if !tx.is_closed() => {
+                    st.ctl.mark_paused(&id_str);
+                    let _ = tx.send(());
+                    true
+                }
+                _ => false,
+            }
+        };
+        if paused {
+            update_status(&ui_weak_pause, &app_state_pause, &id_str, &i18n::t("status_paused"), false);
         }
     });
 
@@ -1047,15 +1054,17 @@ fn setup_ui(
     let ui_weak_resume = ui.as_weak();
     ui.on_resume_sync_after_dialog(move |id| {
         let id_str = id.to_string();
-        if let Some(ui) = ui_weak_resume.upgrade() {
-            ui.set_status_text(tr_ss("status_checking"));
-            ui.set_is_syncing(true);
+        // Popup hangi yolla kapanırsa kapansın (İptal, Esc) çağrılabilir; yalnızca gerçekten
+        // duraklatılmış döngü yeniden başlar, diğer durumlarda çalışan döngüye dokunulmaz.
+        if !app_state_resume.lock().unwrap().ctl.take_paused(&id_str) {
+            return;
         }
         let path = {
             let cfg = sync_core::config::AppConfig::load();
             cfg.sync_folders.iter().find(|f| f.id == id_str).map(|f| f.path.clone())
         };
         if let Some(p) = path {
+            update_status(&ui_weak_resume, &app_state_resume, &id_str, &i18n::t("status_checking"), true);
             start_sync_loop(ui_weak_resume.clone(), app_state_resume.clone(), id_str, std::path::PathBuf::from(p));
         }
     });
@@ -1097,17 +1106,34 @@ fn start_sync_loop(
 ) {
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let trigger = Arc::new(tokio::sync::Notify::new());
+    let generation;
     {
         let mut state = app_state.lock().unwrap();
         if let Some(old) = state.tasks.insert(sync_code.clone(), stop_tx) {
             let _ = old.send(());
         }
         state.triggers.insert(sync_code.clone(), trigger.clone());
+        generation = state.ctl.begin_loop(&sync_code);
     }
 
     tokio::spawn(async move {
-        sync_loop_task(ui_weak, sync_code, folder, stop_rx, trigger, app_state.clone()).await;
+        sync_loop_task(ui_weak, sync_code, folder, stop_rx, trigger, app_state.clone(), generation).await;
     });
+}
+
+/// Döngü dışarıdan durdurulunca "Sync durduruldu" yazar; ama yalnızca hâlâ güncel ve
+/// duraklatılmamış döngü yazar (yeniden başlatılan bir döngünün eski kopyası yeninin durumunu
+/// ezmesin, duraklatma kendi mesajını korusun).
+fn report_stop(
+    ui_weak: &slint::Weak<MainWindow>,
+    app_state: &Arc<Mutex<AppState>>,
+    sync_code: &str,
+    generation: u64,
+) {
+    let report = app_state.lock().unwrap().ctl.should_report_stop(sync_code, generation);
+    if report {
+        update_status(ui_weak, app_state, sync_code, &i18n::t("status_stopped"), false);
+    }
 }
 
 async fn sync_loop_task(
@@ -1117,6 +1143,7 @@ async fn sync_loop_task(
     mut stop_rx: tokio::sync::oneshot::Receiver<()>,
     trigger: Arc<tokio::sync::Notify>,
     app_state_loop: Arc<Mutex<AppState>>,
+    generation: u64,
 ) {
     // Token al
     let token = match sync_core::auth::get_drive_token(false).await {
@@ -1206,17 +1233,21 @@ async fn sync_loop_task(
         folder_id.clone(),
         folder.clone(),
     );
+    // Klasör Drive'da silinmiş mi? Hata metnini ayrıştırmak yerine doğrudan sorulur; böylece
+    // alakasız bir hata "verin silinmiş" popup'ına düşmez.
+    match drive.folder_exists(&folder_id).await {
+        Ok(false) => {
+            drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
+            return;
+        }
+        Ok(true) => {}
+        Err(e) => println!("Klasör denetimi yapılamadı ({folder_id}): {e}"),
+    }
+
     let salt = match temp_engine.load_or_create_salt().await {
         Ok(s) => s,
         Err(e) => {
-            let err_str = e.to_string();
-            // Eğer Google Drive API'den 404 geldiyse, klasör Drive'da yok demektir!
-            if err_str.contains("404") || err_str.contains("not found") || err_str.contains("notFound") {
-                drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
-                return;
-            }
-            
-            let msg = i18n::tf("err_salt", &[("e", &err_str)]);
+            let msg = i18n::tf("err_salt", &[("e", &e.to_string())]);
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
                     show_error(&ui, msg.as_str().into());
@@ -1289,7 +1320,10 @@ async fn sync_loop_task(
                 drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
                 break;
             }
-            _ => {} // Other network errors or success -> continue to pull
+            Ok(true) => {}
+            // Ağ/yetki hatası "silinmiş" demek değildir: normal akış kendi hatasını verir, ama
+            // sessizce yutma.
+            Err(e) => println!("Klasör denetimi yapılamadı ({}): {e}", engine.drive_folder_id),
         }
 
         // 1. Önce Pull (Drive -> Yerel). "İndiriliyor" denmez: önce farklar incelenir; metin,
@@ -1298,7 +1332,7 @@ async fn sync_loop_task(
         let mut pulled = 0usize;
         tokio::select! {
             _ = &mut stop_rx => {
-                
+                report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
                 break;
             }
             res = with_phase_status(
@@ -1318,7 +1352,7 @@ async fn sync_loop_task(
         // 2. Sonra Push (Yerel -> Drive)
         tokio::select! {
             _ = &mut stop_rx => {
-                
+                report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
                 break;
             }
             _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code, pulled) => {}
@@ -1326,7 +1360,7 @@ async fn sync_loop_task(
 
         tokio::select! {
             _ = &mut stop_rx => {
-                
+                report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
                 break;
             }
             _ = interval.tick() => {}
@@ -1833,7 +1867,13 @@ mod tests {
     use std::time::Duration;
 
     fn folder(id: &str, code: &str) -> SyncFolder {
-        SyncFolder { id: id.into(), name: "x".into(), path: "/tmp/x".into(), code: code.into() }
+        SyncFolder {
+            id: id.into(),
+            name: "x".into(),
+            path: "/tmp/x".into(),
+            code: code.into(),
+            can_others_write: None,
+        }
     }
 
     fn state_with(items: &[(&str, &str)]) -> AppState {

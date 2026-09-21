@@ -105,5 +105,21 @@
     "create_new_sync_title": "Neue Synchronisation",
     "can_others_write": "Andere können Änderungen vornehmen",
     "new_drive_folder_name": "Drive-Ordnername:",
-    "status_paused": "Pausiert (Warten auf Bestätigung)"
+    "status_paused": "Pausiert",
+    "edit_change_path": "Ändern",
+    "edit_name": "Ordnername:",
+    "edit_path": "Lokaler Pfad:",
+    "edit_rename_drive": "Auch in Drive umbenennen",
+    "edit_save": "Speichern",
+    "edit_sync_btn": "Bearbeiten",
+    "edit_sync_title": "Synchronisierung bearbeiten",
+    "missing_body": "Der Ordner „{name}“ wurde aus Google Drive gelöscht oder der Zugriff wurde entzogen.",
+    "missing_remove": "Sync entfernen",
+    "missing_title": "Ordner nicht gefunden",
+    "missing_upload": "Erneut hochladen",
+    "err_edit_name_empty": "Der Ordnername darf nicht leer sein.",
+    "err_edit_path_empty": "Der lokale Ordnerpfad darf nicht leer sein.",
+    "err_path_not_dir": "Der ausgewählte Pfad ist kein Ordner.",
+    "status_drive_missing": "Drive-Daten wurden gelöscht",
+    "err_reupload": "Erneutes Hochladen fehlgeschlagen: {e}"
 }

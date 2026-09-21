@@ -93,6 +93,7 @@ mod tests {
         let sources = [
             ("main.rs", include_str!("main.rs")),
             ("update_ui.rs", include_str!("update_ui.rs")),
+            ("drive_missing.rs", include_str!("drive_missing.rs")),
         ];
         let fallback = &tables()[FALLBACK];
         let mut checked = 0;
@@ -106,6 +107,17 @@ mod tests {
             }
         }
         assert!(checked > 20, "anahtarlar ayrıştırılamadı ({checked})");
+    }
+
+    #[test]
+    fn edit_error_messages_exist_in_every_language() {
+        // `SyncEditError::locale_key()` dinamik olduğu için kaynak taramasında yakalanmaz.
+        use crate::sync_core::config::SyncEditError::{EmptyName, EmptyPath, PathInUse, PathIsFile};
+        for err in [EmptyName, EmptyPath, PathInUse, PathIsFile] {
+            for (code, table) in tables() {
+                assert!(table.contains_key(err.locale_key()), "{code}: '{}' yok", err.locale_key());
+            }
+        }
     }
 
     #[test]

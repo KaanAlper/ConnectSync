@@ -105,5 +105,21 @@
     "create_new_sync_title": "新しい同期",
     "can_others_write": "他のユーザーも変更可能",
     "new_drive_folder_name": "Driveフォルダ名:",
-    "status_paused": "一時停止中（確認待ち）"
+    "status_paused": "一時停止中",
+    "edit_change_path": "変更",
+    "edit_name": "フォルダー名：",
+    "edit_path": "ローカルパス：",
+    "edit_rename_drive": "Drive でも名前を変更",
+    "edit_save": "保存",
+    "edit_sync_btn": "編集",
+    "edit_sync_title": "同期を編集",
+    "missing_body": "フォルダー「{name}」は Google Drive から削除されたか、アクセス権が取り消されました。",
+    "missing_remove": "同期を削除",
+    "missing_title": "フォルダーが見つかりません",
+    "missing_upload": "再アップロード",
+    "err_edit_name_empty": "フォルダー名を空にはできません。",
+    "err_edit_path_empty": "ローカルフォルダーのパスを空にはできません。",
+    "err_path_not_dir": "選択したパスはフォルダーではありません。",
+    "status_drive_missing": "Drive のデータが削除されました",
+    "err_reupload": "再アップロードに失敗しました：{e}"
 }

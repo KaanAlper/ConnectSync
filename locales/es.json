@@ -105,5 +105,21 @@
     "create_new_sync_title": "Nueva Sincronización",
     "can_others_write": "Otros pueden hacer cambios",
     "new_drive_folder_name": "Nombre de la carpeta de Drive:",
-    "status_paused": "Pausado (Esperando confirmación)"
+    "status_paused": "En pausa",
+    "edit_change_path": "Cambiar",
+    "edit_name": "Nombre de la carpeta:",
+    "edit_path": "Ruta local:",
+    "edit_rename_drive": "Renombrar también en Drive",
+    "edit_save": "Guardar",
+    "edit_sync_btn": "Editar",
+    "edit_sync_title": "Editar sincronización",
+    "missing_body": "La carpeta «{name}» se eliminó de Google Drive o se revocó el acceso.",
+    "missing_remove": "Quitar sync",
+    "missing_title": "Carpeta no encontrada",
+    "missing_upload": "Volver a subir",
+    "err_edit_name_empty": "El nombre de la carpeta no puede estar vacío.",
+    "err_edit_path_empty": "La ruta de la carpeta local no puede estar vacía.",
+    "err_path_not_dir": "La ruta seleccionada no es una carpeta.",
+    "status_drive_missing": "Los datos de Drive se eliminaron",
+    "err_reupload": "Error al volver a subir: {e}"
 }

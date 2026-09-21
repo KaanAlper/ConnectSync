@@ -105,5 +105,21 @@
     "create_new_sync_title": "Nouvelle Synchronisation",
     "can_others_write": "D'autres peuvent modifier",
     "new_drive_folder_name": "Nom du dossier Drive:",
-    "status_paused": "En pause (Attente de confirmation)"
+    "status_paused": "En pause",
+    "edit_change_path": "Modifier",
+    "edit_name": "Nom du dossier :",
+    "edit_path": "Chemin local :",
+    "edit_rename_drive": "Renommer aussi sur Drive",
+    "edit_save": "Enregistrer",
+    "edit_sync_btn": "Modifier",
+    "edit_sync_title": "Modifier la synchronisation",
+    "missing_body": "Le dossier « {name} » a été supprimé de Google Drive ou l'accès a été révoqué.",
+    "missing_remove": "Retirer la synchro",
+    "missing_title": "Dossier introuvable",
+    "missing_upload": "Renvoyer",
+    "err_edit_name_empty": "Le nom du dossier ne peut pas être vide.",
+    "err_edit_path_empty": "Le chemin du dossier local ne peut pas être vide.",
+    "err_path_not_dir": "Le chemin sélectionné n'est pas un dossier.",
+    "status_drive_missing": "Les données Drive ont été supprimées",
+    "err_reupload": "Échec du renvoi : {e}"
 }

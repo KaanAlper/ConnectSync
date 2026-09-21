@@ -116,5 +116,10 @@
     "can_others_write": "Başkaları değişiklik yapabilsin",
     "app_subtitle": "Sunucusuz Klasör Senkronizasyonu",
     "new_drive_folder_name": "Drive Klasör Adı:",
-    "status_paused": "Duraklatıldı (Onay bekleniyor)"
+    "status_paused": "Duraklatıldı",
+    "err_edit_name_empty": "Klasör adı boş olamaz.",
+    "err_edit_path_empty": "Yerel klasör yolu boş olamaz.",
+    "err_path_not_dir": "Seçilen yol bir klasör değil.",
+    "status_drive_missing": "Drive'daki veri silinmiş",
+    "err_reupload": "Yeniden yükleme başarısız: {e}"
 }
