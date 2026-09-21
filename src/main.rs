@@ -569,24 +569,10 @@ fn setup_ui(
             .map(|n| n.to_string())
             .unwrap_or(cloud_name.clone());
 
-        config.sync_folders.push(sync_core::config::SyncFolder {
-            id: code.clone(),
-            name: display_name,
-            path: path.to_string_lossy().to_string(),
-            code: code.clone(),
-        });
-        if let Err(e) = config.save()
-            && let Some(ui) = ui_weak_add.upgrade() {
-                show_error(&ui, e.as_str().into());
-            }
-
-        // Satır anında "indiriliyor" durumunda görünsün, sonra döngü başlasın
-        update_status(&ui_weak_add, &app_state_add, &code, &i18n::t("status_pulling"), true);
+        // Kaydetme işlemini edit_sync_save'e bırakıyoruz
         if let Some(ui) = ui_weak_add.upgrade() {
-            update_ui_folders(&ui, &app_state_add);
             ui.invoke_show_edit_sync(code.clone().into(), cloud_name.clone().into(), path.to_string_lossy().to_string().into());
         }
-        start_sync_loop(ui_weak_add.clone(), app_state_add.clone(), code, path);
             });
         });
     });
