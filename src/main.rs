@@ -52,13 +52,6 @@ fn show_error(ui: &MainWindow, msg: slint::SharedString) {
         return;
     }
     ui.set_error_text(msg.clone());
-    let weak = ui.as_weak();
-    slint::Timer::single_shot(std::time::Duration::from_secs(8), move || {
-        if let Some(ui) = weak.upgrade()
-            && ui.get_error_text() == msg {
-                ui.set_error_text("".into());
-            }
-    });
 }
 
 /// Çeviriyi doğrudan Slint string'ine çevirir.
@@ -1040,7 +1033,14 @@ async fn sync_loop_task(
     let salt = match temp_engine.load_or_create_salt().await {
         Ok(s) => s,
         Err(e) => {
-            let msg = i18n::tf("err_salt", &[("e", &e.to_string())]);
+            let err_str = e.to_string();
+            // Eğer Google Drive API'den 404 geldiyse, klasör Drive'da yok demektir!
+            if err_str.contains("404") || err_str.contains("not found") || err_str.contains("notFound") {
+                drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
+                return;
+            }
+            
+            let msg = i18n::tf("err_salt", &[("e", &err_str)]);
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak.upgrade() {
                     show_error(&ui, msg.as_str().into());

@@ -1988,11 +1988,12 @@ export component MainWindow inherits Window {
 
                     Text { text: "Hata"; font-size: 1.2rem; font-weight: 700; color: Theme.danger; horizontal-alignment: center; }
                     
+                    Rectangle { height: 1px; width: 100%; background: Theme.surface; }
+
                     Rectangle {
                         width: 100%;
                         height: 140px;
-                        background: Theme.surface;
-                        border-radius: 8px;
+                        background: transparent;
 
                         Flickable {
                             width: parent.width;
@@ -2012,6 +2013,8 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
+
+                    Rectangle { height: 1px; width: 100%; background: Theme.surface; }
 
                     HorizontalLayout {
                         alignment: center;
