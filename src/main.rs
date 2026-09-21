@@ -547,7 +547,7 @@ fn setup_ui(
             
             // Seçilen klasörün içine buluttaki isimle yeni bir klasör ekle
             let path = parent_path.join(&cloud_name);
-            let _ = std::fs::create_dir_all(&path); // Klasörü diskte yarat
+            
 
             let _ = slint::invoke_from_event_loop(move || {
 
@@ -937,9 +937,8 @@ fn setup_ui(
 
     // ── Sync Koduna Bağlan ───────────────────────────────────────────────
     let ui_weak = ui.as_weak();
-    let app_state_connect = app_state.clone();
     ui.on_connect_to_sync(move |sync_code: slint::SharedString| {
-        let sync_code = sync_code.to_string().trim().to_string(); // trim eklendi
+        let sync_code = sync_code.to_string().trim().to_string();
         if sync_code.len() < 8 {
             if let Some(ui) = ui_weak.upgrade() {
                 show_error(&ui, tr_ss("err_invalid_code"));
@@ -948,43 +947,33 @@ fn setup_ui(
         }
 
         let ui_weak = ui_weak.clone();
-        let app_state_connect = app_state_connect.clone();
         std::thread::spawn(move || {
-            let Some(parent_path) = FileDialog::new()
-                .set_title(i18n::t("pick_download_folder"))
-                .pick_folder()
-            else { return };
+            let cloud_name = i18n::t("default_folder_name").to_string();
+            let ui_weak2 = ui_weak.clone();
+            let sync_code2 = sync_code.clone();
             
-            // Seçilen klasörün içine buluttaki isimle yeni bir klasör ekle
-            let path = parent_path;
+            let Some(parent_path) = rfd::FileDialog::new()
+                    .set_title(i18n::t("pick_download_folder"))
+                    .pick_folder()
+                else { return };
+                
+                // Seçilen klasörün içine buluttaki isimle yeni bir klasör ekle
+                let path = parent_path.join(&cloud_name);
 
-            let _ = slint::invoke_from_event_loop(move || {
-
-        let folder_name = path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(i18n::t("default_folder_name").as_str())
-            .to_string();
-
-        // Konfigürasyona kaydet
-        let mut config = sync_core::config::AppConfig::load();
-        config.sync_folders.push(sync_core::config::SyncFolder { id: sync_code.clone(), name: folder_name.clone(), path: path.to_string_lossy().to_string(), code: sync_code.clone() });
-        
-        if let Err(e) = config.save()
-            && let Some(ui) = ui_weak.upgrade() {
-                show_error(&ui, e.as_str().into());
-            }
-        if let Some(ui) = ui_weak.upgrade() { update_ui_folders(&ui, &app_state_connect); }
-
-        if let Some(ui) = ui_weak.upgrade() {
-            ui.set_active_sync_code(sync_code.clone().as_str().into());
-            ui.set_active_hidden(false);
-            ui.set_active_sync_folder(folder_name.as_str().into());
-            // ui.set_error_text("".into()); // Hata varsa silmemesi için yoruma alıyoruz
-            ui.set_status_text(tr_ss("connecting_starting"));
-        }
-
-        start_sync_loop(ui_weak.clone(), app_state_connect.clone(), sync_code, path);
-            });
+                let _ = slint::invoke_from_event_loop(move || {
+                    let mut config = sync_core::config::AppConfig::load();
+                    if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
+                        if let Some(ui) = ui_weak2.upgrade() {
+                            show_error(&ui, tr_ss("err_folder_exists"));
+                        }
+                        return;
+                    }
+                    
+                    // Kaydetme işlemini edit_sync_save'e bırakıyoruz
+                    if let Some(ui) = ui_weak2.upgrade() {
+                        ui.invoke_show_edit_sync(sync_code2.clone().into(), cloud_name.clone().into(), path.to_string_lossy().to_string().into());
+                    }
+                });
         });
     });
 
