@@ -2238,7 +2238,11 @@ export component MainWindow inherits Window {
                             text: Tr.edit_save;
                             width: 120px;
                             clicked => { 
-                                root.edit_sync_save(root.edit_sync_id, root.edit_sync_name, root.edit_sync_path, root.edit_rename_on_drive); 
+                                if root.is_creating_new_sync {
+                                    root.new_sync_save(root.edit_sync_name, root.edit_sync_path, root.edit_rename_on_drive);
+                                } else {
+                                    root.edit_sync_save(root.edit_sync_id, root.edit_sync_name, root.edit_sync_path, root.edit_rename_on_drive); 
+                                }
                                 root.show_edit_dialog = false; 
                             }
                         }

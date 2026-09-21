@@ -11,7 +11,7 @@
 
 <br>
 
-**ConnectSync**, kendi Google Drive hesabınızı veya başkasının oluşturduğu Drive köprülerini kullanarak uçtan uca şifrelenmiş (Zero-Knowledge) dosya senkronizasyonu sağlayan modern bir masaüstü uygulamasıdır. Byteforce tasarım dili baz alınarak karanlık ve şık bir arayüz ile Slint üzerinde geliştirilmiştir.
+**ConnectSync**, kendi Google Drive hesabınızı veya başkasının oluşturduğu Drive köprülerini kullanarak uçtan uca şifrelenmiş (Zero-Knowledge) dosya senkronizasyonu sağlayan modern bir masaüstü uygulamasıdır. Kullanıcı dostu, şık ve karanlık temalı bir arayüz ile Slint üzerinde geliştirilmiştir.
 
 ## ✨ Özellikler
 
@@ -20,6 +20,14 @@
 * **Kodsuz "Kendi Sync'lerim" Erişimi**: Kendi dosyalarınızı eşlerken o upuzun kodları saklamanıza gerek yok. ConnectSync, Google Drive'ınızdaki gizli `appDataFolder` vault'unu kullanarak kendi bilgisayarlarınız arasında şifreleri otomatik taşır.
 * **Başkasıyla Paylaşım**: Ürettiğiniz kodu arkadaşınıza verdiğinizde, arkadaşınız **kendi kotasından yemeden** sizin Drive'ınıza (şifreli bir tünel ile) dosya yazabilir ve okuyabilir.
 * **Arka Plan İşlemleri**: Uygulama açık olduğu sürece (veya sistem tepsisine küçültüldüğünde) inotify/ReadDirectoryChangesW ile değişiklikleri anında buluta atar.
+
+## 📸 Ekran Görüntüleri
+
+<div align="center">
+  <img src="assets/screenshots/main_menu.png" width="260" alt="Ana Menü">
+  <img src="assets/screenshots/new_sync.png" width="260" alt="Yeni Senkronizasyon">
+  <img src="assets/screenshots/my_syncs.png" width="260" alt="Senkronizasyonlarım">
+</div>
 
 ## 🚀 Hızlı Kurulum
 
@@ -33,7 +41,7 @@ curl -sL https://raw.githubusercontent.com/kaanalper/ConnectSync/main/install.sh
 
 ### Windows İçin
 
-Yakında karanlık (Dark Mode) Inno Setup veya NSIS tabanlı yükleyici (Byteforce Installer) `.exe` olarak yayınlanacaktır.
+Yakında yerleşik yükleyici `.exe` olarak yayınlanacaktır.
 
 ## 💻 Geliştirme (Build)
 
@@ -46,10 +54,6 @@ cargo build --release
 ```
 
 Derlenen dosya `target/release/connect_sync` (Windows'ta `connect_sync.exe`) dizininde olacaktır.
-
-## 📸 Ekran Görüntüleri
-
-*(Buraya yakında arayüz ekran görüntüleri eklenecektir)*
 
 ## 🛠 Kullanılan Teknolojiler
 
