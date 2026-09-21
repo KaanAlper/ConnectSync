@@ -158,6 +158,28 @@ component DarkButton inherits Rectangle {
     }
 }
 
+component DangerButton inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+
+    height: 40px;
+    border-radius: 8px;
+    background: ta.pressed ? Theme.danger_hover : (ta.has-hover ? Theme.danger_hover : Theme.danger);
+
+    Text {
+        text: root.text;
+        color: Theme.on_accent;
+        font-weight: 700;
+        font-size: 0.95rem;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    ta := TouchArea {
+        clicked => { root.clicked() }
+    }
+}
+
 component ModernButton inherits Rectangle {
     in property <string> text;
     callback clicked();
@@ -1759,31 +1781,31 @@ export component MainWindow inherits Window {
         if show_delete_dialog: TouchArea {
             width: 100%;
             height: 100%;
-            
+
             Rectangle {
-                width: 100%;
-                height: 100%;
-                background: Theme.scrim;
+                width: 100%; height: 100%; background: Theme.scrim_strong;
+                opacity: root.show_delete_dialog ? 1.0 : 0.0;
+                animate opacity { duration: 200ms; easing: ease-out; }
             }
-            
+
             Rectangle {
                 width: 320px;
-                height: 190px;
+                height: delete_content.preferred-height;
                 background: Theme.bg;
                 border-radius: 12px;
                 border-width: 1px;
                 border-color: Theme.surface;
                 drop-shadow-blur: 15px;
                 drop-shadow-color: Theme.shadow;
-                
-                VerticalLayout {
+
+                delete_content := VerticalLayout {
                     padding: 24px;
                     spacing: 16px;
                     alignment: center;
-                    
-                    Text { text: Tr.remove_sync_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
+
+                    Text { text: Tr.remove_sync_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
                     Text { text: Tr.remove_sync_body; font-size: 0.9rem; color: Theme.text_muted; horizontal-alignment: center; wrap: word-wrap; }
-                    
+
                     HorizontalLayout {
                         alignment: center;
                         spacing: 10px;
@@ -1794,20 +1816,19 @@ export component MainWindow inherits Window {
                     HorizontalLayout {
                         spacing: 16px;
                         alignment: center;
-                        
-                        Rectangle {
-                            width: 110px; height: 36px; border-radius: 18px; border-width: 1px; border-color: Theme.border_strong; background: transparent;
-                            Text { text: Tr.cancel; color: Theme.text; horizontal-alignment: center; vertical-alignment: center; }
-                            TouchArea { clicked => { root.show_delete_dialog = false; } }
+                        height: 40px;
+                        DarkButton {
+                            text: Tr.cancel;
+                            width: 120px;
+                            clicked => { root.show_delete_dialog = false; }
                         }
-                        
-                        Rectangle {
-                            width: 110px; height: 36px; border-radius: 18px; background: Theme.danger;
-                            Text { text: Tr.remove; color: Theme.on_accent; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                            TouchArea { clicked => { 
+                        DangerButton {
+                            text: Tr.remove;
+                            width: 130px;
+                            clicked => { 
                                 root.confirm_delete_sync(root.delete_target_id, root.delete_from_cloud); 
                                 root.show_delete_dialog = false; 
-                            } }
+                            }
                         }
                     }
                 }
@@ -2020,43 +2041,47 @@ export component MainWindow inherits Window {
         }
 
     // Modal Quit Dialog overlay (en üstte çizilmesi için dosyanın sonunda)
-    Rectangle {
+    if show_quit_dialog: TouchArea {
         width: 100%;
         height: 100%;
-        background: Theme.scrim_strong;
-        opacity: root.show_quit_dialog ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 200ms; easing: ease-out; }
 
-        TouchArea {}
+        Rectangle {
+            width: 100%; height: 100%; background: Theme.scrim_strong;
+            opacity: root.show_quit_dialog ? 1.0 : 0.0;
+            animate opacity { duration: 200ms; easing: ease-out; }
+        }
 
         Rectangle {
             width: 320px;
-            height: 160px;
+            height: quit_content.preferred-height;
             background: Theme.bg;
             border-radius: 12px;
             border-width: 1px;
             border-color: Theme.surface;
+            drop-shadow-blur: 15px;
+            drop-shadow-color: Theme.shadow;
 
-            VerticalLayout {
-                padding: 20px;
-                spacing: 15px;
+            quit_content := VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
                 alignment: center;
 
-                Text { text: Tr.quit_title; color: Theme.text; font-size: 1.1rem; font-weight: 600; horizontal-alignment: center; }
-                Text { text: Tr.quit_body; color: Theme.text_muted; font-size: 0.85rem; horizontal-alignment: center; }
+                Text { text: Tr.quit_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+                Text { text: Tr.quit_body; font-size: 0.9rem; color: Theme.text_muted; horizontal-alignment: center; wrap: word-wrap; }
 
                 HorizontalLayout {
-                    spacing: 15px;
+                    spacing: 16px;
                     alignment: center;
-                    ModernButton { text: Tr.cancel; width: 100px; clicked => { root.show_quit_dialog = false; } }
-                    Rectangle {
-                        width: 100px;
-                        height: 40px;
-                        border-radius: 8px;
-                        background: ta_quit.pressed ? Theme.danger_hover : (ta_quit.has-hover ? Theme.danger : Theme.danger);
-                        Text { text: Tr.quit; color: Theme.on_accent; font-size: 0.95rem; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                        ta_quit := TouchArea { clicked => { root.fully_quit_requested(); } }
+                    height: 40px;
+                    DarkButton {
+                        text: Tr.cancel;
+                        width: 120px;
+                        clicked => { root.show_quit_dialog = false; }
+                    }
+                    DangerButton {
+                        text: Tr.quit;
+                        width: 130px;
+                        clicked => { root.fully_quit_requested(); }
                     }
                 }
             }
