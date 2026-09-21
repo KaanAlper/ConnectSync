@@ -12,13 +12,16 @@
 //! - Drive'dan silinmiş chunk'lar tespit edilir ve ilgili dosya yeniden yüklenir.
 //! - Klasör boş/bağlı değil gibi durumlarda toplu silme koruması vardır.
 //!
-//! Bellek: dosya başına kanal (CHANNEL_CAP) + global yükleme izni (UPLOAD_CONCURRENCY)
-//! + alıcıda bekleyen/chunker'da tutulan birer chunk. Chunk en fazla ~4 MiB olduğundan
-//! üst sınır kabaca (FILE_CONCURRENCY * (CHANNEL_CAP + 2) + UPLOAD_CONCURRENCY) * 4 MiB.
+//! Bellek: dosya başına kanal (CHANNEL_CAP) + global yükleme izni (`Concurrency::uploads`) +
+//! alıcıda bekleyen/chunker'da tutulan birer chunk. Chunk en fazla ~4 MiB olduğundan
+//! üst sınır kabaca (files * (CHANNEL_CAP + 2) + uploads) * 4 MiB. Varsayılanda (4 thread)
+//! ≈ 88 MiB, en yüksek ayarda (16 thread) ≈ 352 MiB.
 
+use super::config::{clamp_threads, DEFAULT_THREADS};
 use super::crypto::{decrypt_chunk, encrypt_chunk, hash_chunk_name, Keys};
 use super::drive::DriveClient;
 use super::manifest::{FileInfo, Manifest};
+use super::progress::{self, PhaseGuard};
 use fastcdc::v2020::StreamCDC;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::OsStr;
@@ -39,10 +42,24 @@ const CDC_MIN: usize = 256 * 1024;
 const CDC_AVG: usize = 1024 * 1024;
 const CDC_MAX: usize = 4 * 1024 * 1024;
 
-/// Aynı anda işlenen dosya sayısı.
-const FILE_CONCURRENCY: usize = 3;
-/// Tüm dosyalar toplamı, aynı anda süren chunk yüklemesi.
-const UPLOAD_CONCURRENCY: usize = 4;
+/// Kullanıcı ayarındaki "eşzamanlı aktarım" sayısından türetilen paralellik sınırları.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Concurrency {
+    /// Aynı anda işlenen dosya sayısı.
+    files: usize,
+    /// Tüm dosyalar toplamı, aynı anda süren chunk yüklemesi.
+    uploads: usize,
+}
+
+impl Concurrency {
+    /// `threads` önce izin verilen aralığa çekilir. Yükleme izni = threads; aynı anda
+    /// işlenen dosya sayısı bunun ~3/4'ü (en az 1). Varsayılan 4 → 3 dosya / 4 yükleme.
+    fn from_threads(threads: u32) -> Self {
+        let t = clamp_threads(threads) as usize;
+        Self { files: (t * 3 / 4).max(1), uploads: t }
+    }
+}
+
 /// Chunker -> yükleyici kanal kapasitesi (dosya başına).
 const CHANNEL_CAP: usize = 4;
 /// Restore'da dosya başına önceden indirilen chunk sayısı.
@@ -118,6 +135,7 @@ pub struct SyncEngine {
     pub local_folder_path: PathBuf,
     pub local_revision: tokio::sync::Mutex<u64>,
     sync_lock: tokio::sync::Mutex<()>,
+    concurrency: Concurrency,
 }
 
 impl SyncEngine {
@@ -153,7 +171,15 @@ impl SyncEngine {
             local_folder_path,
             sync_lock: tokio::sync::Mutex::new(()),
             local_revision: tokio::sync::Mutex::new(saved_revision),
+            concurrency: Concurrency::from_threads(DEFAULT_THREADS),
         }
+    }
+
+    /// Eşzamanlı aktarım sayısını (ayarlardaki `concurrent_threads`) uygular.
+    /// Aralık dışı değerler sınırlara çekilir.
+    pub fn with_threads(mut self, threads: u32) -> Self {
+        self.concurrency = Concurrency::from_threads(threads);
+        self
     }
 
     pub async fn run_sync_push(&self) -> Res<SyncReport> {
@@ -162,6 +188,9 @@ impl SyncEngine {
 
     pub async fn run_sync_push_with(&self, opts: PushOptions) -> Res<SyncReport> {
         let _guard = self.sync_lock.lock().await;
+        // Fonksiyondan nasıl çıkılırsa çıkılsın (başarı, `?` ile erken dönüş) ilerlemeyi sıfırlar.
+        let _progress_guard = PhaseGuard(self.drive_client.progress.clone());
+        self.drive_client.progress.begin(progress::PHASE_PREPARE, 0, 0);
         let mut report = SyncReport::default();
 
         println!("Drive index yenileniyor...");
@@ -238,12 +267,18 @@ impl SyncEngine {
             println!("{} silinmiş dosya manifest'ten çıkarıldı.", removed.len());
         }
 
+        // --- ilerleme: yüklenecek toplam bayt/dosya (arayüzdeki MB/GB çubuğu için) ---
+        let total_push_bytes: u64 = work.iter().map(|f| f.size).sum();
+        self.drive_client
+            .progress
+            .begin(progress::PHASE_PUSH, total_push_bytes, work.len() as u64);
+
         // --- yükleme hattı ---
         let ctx = Arc::new(PushCtx {
             client: self.drive_client.clone(),
             keys: self.keys.clone(),
             folder_id: self.drive_folder_id.clone(),
-            upload_sem: Arc::new(Semaphore::new(UPLOAD_CONCURRENCY)),
+            upload_sem: Arc::new(Semaphore::new(self.concurrency.uploads)),
             inflight: InflightLocks::default(),
             chunks_uploaded: AtomicU64::new(0),
             chunks_deduped: AtomicU64::new(0),
@@ -257,9 +292,10 @@ impl SyncEngine {
         let mut last_checkpoint = Instant::now();
 
         loop {
-            while set.len() < FILE_CONCURRENCY {
+            while set.len() < self.concurrency.files {
                 let Some(lf) = queue.next() else { break };
                 println!("Senkronize ediliyor: {}", lf.rel_path);
+                self.drive_client.progress.set_current(&lf.rel_path);
                 let ctx = ctx.clone();
                 set.spawn(async move {
                     let rel = lf.rel_path.clone();
@@ -277,20 +313,24 @@ impl SyncEngine {
                     manifest.files.insert(rel, info);
                     report.uploaded_files += 1;
                     unsaved += 1;
+                    self.drive_client.progress.file_done();
                 }
                 Ok((rel, Ok(FileOutcome::ChangedDuringSync))) => {
                     println!("[{done}/{total_work}] Sync sırasında değişti/silindi, sonraya bırakıldı: {rel}");
                     report.changed_during_sync.push(rel);
+                    self.drive_client.progress.file_done();
                 }
                 Ok((rel, Err(e))) => {
                     eprintln!("[{done}/{total_work}] HATA ({rel}): {e}");
                     report.failed_files.push((rel, e));
+                    self.drive_client.progress.file_done();
                 }
                 Err(e) => {
                     // Görev çöktüğü için hangi dosya olduğu bilinmiyor; manifest'e
                     // yazılmadığından bir sonraki turda zaten yeniden denenir.
                     eprintln!("Dosya görevi çöktü: {e}");
                     report.failed_files.push(("<bilinmiyor>".into(), e.to_string()));
+                    self.drive_client.progress.file_done();
                 }
             }
 
@@ -335,6 +375,8 @@ impl SyncEngine {
     /// Drive'daki manifest'e göre dosyaları `target_dir` altına geri yükler.
     pub async fn run_sync_pull(&self, target_dir: &Path, overwrite: bool) -> Res<PullReport> {
         let _guard = self.sync_lock.lock().await;
+        let _progress_guard = PhaseGuard(self.drive_client.progress.clone());
+        self.drive_client.progress.begin(progress::PHASE_PREPARE, 0, 0);
         let mut report = PullReport::default();
 
         let count = self.drive_client.refresh_index(&self.drive_folder_id).await?;
@@ -385,15 +427,21 @@ impl SyncEngine {
             keys: self.keys.clone(),
         });
 
+        let total_pull_bytes: u64 = jobs.iter().map(|(_, info, _)| info.size).sum();
+        self.drive_client
+            .progress
+            .begin(progress::PHASE_PULL, total_pull_bytes, jobs.len() as u64);
+
         let total = jobs.len();
         let mut queue = jobs.into_iter();
         let mut set: JoinSet<(String, Result<u64, String>)> = JoinSet::new();
         let mut done = 0usize;
 
         loop {
-            while set.len() < FILE_CONCURRENCY {
+            while set.len() < self.concurrency.files {
                 let Some((rel, info, dest)) = queue.next() else { break };
                 println!("Geri yükleniyor: {rel}");
+                self.drive_client.progress.set_current(&rel);
                 let ctx = ctx.clone();
                 set.spawn(async move {
                     let res = restore_one_file(ctx, info, dest).await;
@@ -409,14 +457,17 @@ impl SyncEngine {
                     println!("[{done}/{total}] Geri yüklendi: {rel}");
                     report.restored_files += 1;
                     report.bytes_written += bytes;
+                    self.drive_client.progress.file_done();
                 }
                 Ok((rel, Err(e))) => {
                     eprintln!("[{done}/{total}] HATA ({rel}): {e}");
                     report.failed_files.push((rel, e));
+                    self.drive_client.progress.file_done();
                 }
                 Err(e) => {
                     eprintln!("Restore görevi çöktü: {e}");
                     report.failed_files.push(("<bilinmiyor>".into(), e.to_string()));
+                    self.drive_client.progress.file_done();
                 }
             }
         }
@@ -517,7 +568,7 @@ impl SyncEngine {
         // Yeni salt üret ve kaydet
         let mut salt = [0u8; 32];
         getrandom::fill(&mut salt).map_err(|e| format!("Salt üretilemedi: {e}"))?;
-        let json = serde_json::json!({ "salt": hex::encode(&salt) }).to_string();
+        let json = serde_json::json!({ "salt": hex::encode(salt) }).to_string();
         self.drive_client
             .upsert_file(&self.drive_folder_id, Self::VAULT_NAME, json.as_bytes())
             .await?;
@@ -543,7 +594,7 @@ impl SyncEngine {
         // Manifest'teki canlı chunk kümesini hex adlarla oluştur
         let manifest = self.load_manifest().await?;
         let live: std::collections::HashSet<String> = manifest.files.values()
-            .flat_map(|fi| fi.chunks.iter().map(|c| hex::encode(c)))
+            .flat_map(|fi| fi.chunks.iter().map(hex::encode))
             .collect();
 
         // Drive'daki tüm dosyaları tara (name, id, created_time)
@@ -565,11 +616,10 @@ impl SyncEngine {
                 if let Some(ct) = created_time_str {
                     if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&ct) {
                         let sys_time: std::time::SystemTime = parsed.into();
-                        if let Ok(dur) = now.duration_since(sys_time) {
-                            if dur.as_secs() > 86400 {
+                        if let Ok(dur) = now.duration_since(sys_time)
+                            && dur.as_secs() > 86400 {
                                 should_delete = true;
                             }
-                        }
                     } else {
                         // Parse edilemediyse (normalde olmamalı), güvenli tarafta kalıp silelim mi?
                         // Hayır, silmeyelim.
@@ -620,7 +670,7 @@ enum FileOutcome {
 /// Bir dosyayı chunk'lar, şifreler ve yükler. Başarıda `FileInfo` döner;
 /// herhangi bir chunk sorununda `Err` (dosya manifest'e yazılmaz).
 async fn sync_one_file(ctx: Arc<PushCtx>, lf: LocalFile) -> Result<FileOutcome, String> {
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<([u8; 32], Option<Vec<u8>>)>(CHANNEL_CAP);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<([u8; 32], Option<Vec<u8>>, u64)>(CHANNEL_CAP);
     let failed = Arc::new(AtomicBool::new(false));
 
     // Chunker: bloklayıcı thread'de okur, isimlendirir, (gerekirse) şifreler.
@@ -636,17 +686,18 @@ async fn sync_one_file(ctx: Arc<PushCtx>, lf: LocalFile) -> Result<FileOutcome, 
                 total += chunk.data.len() as u64;
 
                 let name = hash_chunk_name(&ctx.keys.hmac_key, &chunk.data);
+                let plain_len = chunk.data.len() as u64;
                 // Drive'da zaten varsa şifreleme ve kanal maliyetini atla.
-                let enc = if ctx.client.has(&hex::encode(&name)) {
+                let enc = if ctx.client.has(&hex::encode(name)) {
                     None
                 } else {
                     Some(
-                        encrypt_chunk(&ctx.keys.enc_key, &hex::encode(&name), &chunk.data)
+                        encrypt_chunk(&ctx.keys.enc_key, &hex::encode(name), &chunk.data)
                             .map_err(|e| format!("şifreleme hatası: {e}"))?,
                     )
                 };
 
-                if tx.blocking_send((name, enc)).is_err() {
+                if tx.blocking_send((name, enc, plain_len)).is_err() {
                     return Err("alıcı kapandı".into());
                 }
             }
@@ -658,14 +709,18 @@ async fn sync_one_file(ctx: Arc<PushCtx>, lf: LocalFile) -> Result<FileOutcome, 
     let mut hashes: Vec<[u8; 32]> = Vec::new();
     let mut uploads: JoinSet<Result<(), String>> = JoinSet::new();
 
-    while let Some((name, enc)) = rx.recv().await {
+    while let Some((name, enc, plain_len)) = rx.recv().await {
         if failed.load(Ordering::Relaxed) {
             break; // bir yükleme zaten başarısız oldu, boşuna devam etme
         }
-        hashes.push(name.clone());
+        hashes.push(name);
 
         let Some(enc) = enc else {
+            // Chunk Drive'da zaten var; gerçek transfer yok. `plain_len` sayesinde ilerleme
+            // çubuğu yine de bu kadar baytı "tamamlandı" sayar (aksi halde dedupe edilen
+            // dosyalarda çubuk %100'e hiç ulaşmaz).
             ctx.chunks_deduped.fetch_add(1, Ordering::Relaxed);
+            ctx.client.progress.add_bytes(plain_len);
             continue;
         };
 
@@ -678,7 +733,7 @@ async fn sync_one_file(ctx: Arc<PushCtx>, lf: LocalFile) -> Result<FileOutcome, 
 
         let ctx2 = ctx.clone();
         let failed2 = failed.clone();
-        let hex_name = hex::encode(&name);
+        let hex_name = hex::encode(name);
         uploads.spawn(async move {
             let _permit = permit; // görev bitene kadar izin tutulur
             let res = upload_chunk(&ctx2, &hex_name, enc).await;
@@ -775,11 +830,10 @@ impl InflightLocks {
     fn release(&self, name: &str, lock: Arc<tokio::sync::Mutex<()>>) {
         let mut m = self.map.lock().unwrap();
         drop(lock);
-        if let Some(arc) = m.get(name) {
-            if Arc::strong_count(arc) == 1 {
+        if let Some(arc) = m.get(name)
+            && Arc::strong_count(arc) == 1 {
                 m.remove(name);
             }
-        }
     }
 }
 
@@ -832,7 +886,7 @@ async fn restore_into(ctx: &Arc<PullCtx>, info: &FileInfo, tmp: &Path) -> Result
             while pending.len() < PREFETCH {
                 let Some(name) = names.next() else { break };
                 let ctx = ctx.clone();
-                let name = name.clone();
+                let name = *name;
                 let hex_name = hex::encode(name);
                 pending.push_back(tokio::spawn(async move { fetch_chunk(&ctx, &hex_name).await }));
             }
@@ -930,7 +984,7 @@ fn scan_local(root: &Path) -> Result<ScanResult, String> {
             continue;
         }
 
-        if entry.path().extension().map_or(false, |ext| ext == "connectsync-part") {
+        if entry.path().extension().is_some_and(|ext| ext == "connectsync-part") {
             continue;
         }
         // Dahili ConnectSync meta dosyaları — sync dışı
@@ -987,18 +1041,17 @@ fn rel_path_string(root: &Path, full: &Path) -> Option<String> {
 fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
     let mut out = base.to_path_buf();
     for part in rel.split('/') {
-        if cfg!(windows) {
-            if part.contains(':')
+        if cfg!(windows)
+            && (part.contains(':')
                 || part.eq_ignore_ascii_case("CON")
                 || part.eq_ignore_ascii_case("PRN")
                 || part.eq_ignore_ascii_case("AUX")
                 || part.eq_ignore_ascii_case("NUL")
                 || (part.len() == 4 && part[..3].eq_ignore_ascii_case("COM") && part.as_bytes()[3].is_ascii_digit())
-                || (part.len() == 4 && part[..3].eq_ignore_ascii_case("LPT") && part.as_bytes()[3].is_ascii_digit())
+                || (part.len() == 4 && part[..3].eq_ignore_ascii_case("LPT") && part.as_bytes()[3].is_ascii_digit()))
             {
                 return None;
             }
-        }
         let mut comps = Path::new(part).components();
         match (comps.next(), comps.next()) {
             (Some(Component::Normal(_)), None) => out.push(part),
@@ -1038,6 +1091,33 @@ fn tmp_path(dest: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrency_default_matches_previous_constants() {
+        // Ayar eklenmeden önceki sabitler: 3 dosya / 4 yükleme.
+        let c = Concurrency::from_threads(super::super::config::DEFAULT_THREADS);
+        assert_eq!(c, Concurrency { files: 3, uploads: 4 });
+    }
+
+    #[test]
+    fn concurrency_clamps_out_of_range_values() {
+        let low = Concurrency::from_threads(0);
+        assert_eq!(low, Concurrency { files: 1, uploads: 1 });
+        let high = Concurrency::from_threads(10_000);
+        assert_eq!(high.uploads, super::super::config::MAX_THREADS as usize);
+    }
+
+    #[test]
+    fn concurrency_never_starves_and_is_monotonic() {
+        let mut prev = Concurrency::from_threads(super::super::config::MIN_THREADS);
+        for t in super::super::config::MIN_THREADS..=super::super::config::MAX_THREADS {
+            let c = Concurrency::from_threads(t);
+            assert!(c.files >= 1 && c.uploads >= 1, "t={t}");
+            assert!(c.files <= c.uploads, "t={t}");
+            assert!(c.files >= prev.files && c.uploads >= prev.uploads, "t={t}");
+            prev = c;
+        }
+    }
 
     #[test]
     fn safe_join_rejects_traversal() {

@@ -86,7 +86,7 @@ pub fn decrypt_chunk(
     };
 
     let decrypted = cipher
-        .decrypt(aes_gcm::Nonce::from_slice(nonce), payload)
+        .decrypt(nonce.try_into().expect("Geçersiz nonce boyutu"), payload)
         .map_err(|e| -> Box<dyn Error + Send + Sync> { format!("Şifre çözme hatası (veya veri bozulmuş): {}", e).into() })?;
         
     Ok(decrypted)

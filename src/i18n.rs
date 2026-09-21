@@ -68,3 +68,71 @@ pub fn tf<V: AsRef<str>>(key: &str, args: &[(&str, V)]) -> String {
     }
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn every_language_has_the_same_keys_as_the_fallback() {
+        let tabs = tables();
+        let base: BTreeSet<&String> = tabs[FALLBACK].keys().collect();
+        for (code, table) in tabs {
+            let keys: BTreeSet<&String> = table.keys().collect();
+            let missing: Vec<_> = base.difference(&keys).collect();
+            let extra: Vec<_> = keys.difference(&base).collect();
+            assert!(missing.is_empty(), "{code}: eksik anahtarlar: {missing:?}");
+            assert!(extra.is_empty(), "{code}: fazladan anahtarlar: {extra:?}");
+        }
+    }
+
+    #[test]
+    fn every_key_used_in_rust_source_exists_in_the_fallback_locale() {
+        // Kodda `i18n::t("anahtar")` yazıp locale'e eklemeyi unutmak ekranda ham anahtar gösterir.
+        let sources = [
+            ("main.rs", include_str!("main.rs")),
+            ("update_ui.rs", include_str!("update_ui.rs")),
+        ];
+        let fallback = &tables()[FALLBACK];
+        let mut checked = 0;
+        for (file, src) in sources {
+            for call in ["i18n::t(\"", "i18n::tf(\"", "tr_ss(\""] {
+                for chunk in src.split(call).skip(1) {
+                    let key = chunk.split('"').next().unwrap();
+                    assert!(fallback.contains_key(key), "{file}: '{key}' anahtarı locales/{FALLBACK}.json'da yok");
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 20, "anahtarlar ayrıştırılamadı ({checked})");
+    }
+
+    #[test]
+    fn no_language_has_empty_values() {
+        for (code, table) in tables() {
+            for (key, value) in table {
+                assert!(!value.trim().is_empty(), "{code}.{key} boş");
+            }
+        }
+    }
+
+    #[test]
+    fn placeholders_survive_translation() {
+        // `{n}` yer tutucusu her dilde bulunmalı, yoksa deneme sayısı arayüzde kaybolur.
+        for (code, table) in tables() {
+            assert!(table["net_waiting"].contains("{n}"), "{code}: net_waiting'de {{n}} yok");
+        }
+    }
+
+    #[test]
+    fn tf_fills_placeholders() {
+        let s = tf("net_waiting", &[("n", "7")]);
+        assert!(s.contains('7') && !s.contains("{n}"), "{s}");
+    }
+
+    #[test]
+    fn missing_key_falls_back_to_the_key_itself() {
+        assert_eq!(t("__yok_boyle_bir_anahtar__"), "__yok_boyle_bir_anahtar__");
+    }
+}

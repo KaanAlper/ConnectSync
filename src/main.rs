@@ -13,7 +13,7 @@ fn configure_autostart(enable: bool, start_in_tray: bool) {
     let auto = match AutoLaunchBuilder::new()
         .set_app_name("ConnectSync")
         .set_app_path(app_path_str)
-        .set_use_launch_agent(true)
+        .set_macos_launch_mode(auto_launch::MacOSLaunchMode::LaunchAgent)
         .set_args(args)
         .build() {
             Ok(a) => a,
@@ -37,20 +37,26 @@ use std::cell::RefCell;
 slint::include_modules!();
 mod sync_core;
 mod i18n;
+mod update_ui;
+mod updater;
 
 /// Hata çubuğunu gösterir ve 8 sn sonra (hâlâ aynı mesajsa) kendiliğinden kapatır.
 fn show_error(ui: &MainWindow, msg: slint::SharedString) {
-    ui.set_error_text(msg.clone());
     if msg.is_empty() {
+        ui.set_error_text(msg);
         return;
     }
+    // Popup kapatıldıysa hiç gösterme; hata yine de satırda (folder.status) görünür kalır.
+    if !sync_core::config::AppConfig::load().show_error_popups {
+        return;
+    }
+    ui.set_error_text(msg.clone());
     let weak = ui.as_weak();
     slint::Timer::single_shot(std::time::Duration::from_secs(8), move || {
-        if let Some(ui) = weak.upgrade() {
-            if ui.get_error_text() == msg {
+        if let Some(ui) = weak.upgrade()
+            && ui.get_error_text() == msg {
                 ui.set_error_text("".into());
             }
-        }
     });
 }
 
@@ -109,6 +115,20 @@ fn apply_language(ui: &MainWindow, lang: &str) {
         set_update_ready_body => "update_ready_body",
         set_later => "later",
         set_restart => "restart",
+        set_section_this_pc => "section_this_pc",
+        set_section_on_drive => "section_on_drive",
+        set_add_from_drive => "add_from_drive",
+        set_not_added_hint => "not_added_hint",
+        set_section_advanced => "section_advanced",
+        set_watch_changes_label => "watch_changes_label",
+        set_watch_changes_hint => "watch_changes_hint",
+        set_auto_gc_label => "auto_gc_label",
+        set_error_popups_label => "error_popups_label",
+        set_network_popups_label => "network_popups_label",
+        set_check_interval_label => "check_interval_label",
+        set_dark_theme_label => "dark_theme_label",
+        set_update_now => "update_now",
+        set_ok => "ok",
     );
 }
 
@@ -131,6 +151,8 @@ pub struct FolderState {
     pub status: String,
     pub is_syncing: bool,
     pub error: String,
+    /// Aktif sync döngüsü çalışıyorsa onun ilerleme/ağ durumu (MB/GB çubuğu, bağlantı kopukluğu).
+    pub progress: Option<Arc<sync_core::progress::Progress>>,
 }
 
 #[derive(Default)]
@@ -139,19 +161,51 @@ pub struct AppState {
     /// Çalışan sync döngüsünü beklemeden uyandırmak için (manuel eşitle butonu)
     pub triggers: std::collections::HashMap<String, Arc<tokio::sync::Notify>>,
     pub folder_states: std::collections::HashMap<String, FolderState>,
+    /// Drive'da bulunan (kod, ad) listesi; bu PC'de olmayanlar "Drive'da" bölümünde gösterilir
+    pub cloud_items: Vec<(String, String)>,
+    /// Arka plan taraması `cloud_items`'ı değiştirdi; tray zamanlayıcısı arayüzü yenileyip
+    /// bayrağı temizler (pencere yoksa bir sonraki `setup_ui` zaten güncel listeyi çeker).
+    pub cloud_dirty: bool,
+    /// Güncelleme popup'ının durumu (pencere kapalıyken de indirme sürer): bkz. `update_ui`.
+    pub update: update_ui::UpdateStore,
 }
 
 // ---------------------------------------------------------------------------
 // UI kurulumu ve tüm callback bağlantıları
 // ---------------------------------------------------------------------------
+/// "cs-{driveFolderId}-{hexKey}" kodundan Drive klasör ID'sini çıkarır.
+/// Drive ID'leri '-' içerebildiği için baştaki "cs-" atılır, SON '-' ayırıcı sayılır.
+fn drive_folder_id(code: &str) -> &str {
+    code.strip_prefix("cs-")
+        .and_then(|r| r.rsplit_once('-'))
+        .map(|(f, _)| f)
+        .unwrap_or(code)
+}
+
+/// Drive'da olup bu bilgisayara henüz eklenmemiş (kod, ad) çiftleri.
+fn cloud_only(config: &crate::sync_core::config::AppConfig, state: &AppState) -> Vec<(String, String)> {
+    let local: std::collections::HashSet<String> = config
+        .sync_folders
+        .iter()
+        .map(|f| drive_folder_id(if f.code.is_empty() { &f.id } else { &f.code }).to_string())
+        .collect();
+    state
+        .cloud_items
+        .iter()
+        .filter(|(code, _)| !local.contains(drive_folder_id(code)))
+        .cloned()
+        .collect()
+}
+
 pub fn update_ui_folders(ui: &crate::MainWindow, app_state: &std::sync::Arc<std::sync::Mutex<crate::AppState>>) {
     let config = crate::sync_core::config::AppConfig::load();
     let model = std::rc::Rc::new(slint::VecModel::<crate::SyncFolderItem>::default());
+    let cloud_model = std::rc::Rc::new(slint::VecModel::<crate::SyncFolderItem>::default());
     let state = app_state.lock().unwrap();
     for f in &config.sync_folders {
         let default_state = crate::FolderState::default();
         let fs = state.folder_states.get(&f.id).unwrap_or(&default_state);
-        
+
         model.push(crate::SyncFolderItem {
             id: f.id.clone().into(),
             name: f.name.clone().into(),
@@ -161,32 +215,95 @@ pub fn update_ui_folders(ui: &crate::MainWindow, app_state: &std::sync::Arc<std:
             is_syncing: fs.is_syncing,
         });
     }
+    // Sadece Drive'da olanlar (bu PC'ye eklenmemiş)
+    for (code, name) in cloud_only(&config, &state) {
+        cloud_model.push(crate::SyncFolderItem {
+            id: code.clone().into(),
+            name: name.into(),
+            path: "".into(),
+            code: code.into(),
+            status: "".into(),
+            is_syncing: false,
+        });
+    }
     drop(state);
     ui.set_sync_folders(model.into());
+    ui.set_cloud_folders(cloud_model.into());
+}
+
+/// Bir sync'i bu bilgisayardan kaldırır: döngüyü durdurur, config'ten siler, listeyi yeniler.
+/// Drive'daki veriye dokunmaz (klasör "Drive'da" bölümüne geri düşer).
+fn remove_local_sync(
+    ui_weak: &slint::Weak<MainWindow>,
+    app_state: &Arc<Mutex<AppState>>,
+    id: &str,
+) {
+    {
+        let mut st = app_state.lock().unwrap();
+        if let Some(tx) = st.tasks.remove(id) {
+            let _ = tx.send(());
+        }
+        st.triggers.remove(id);
+        st.folder_states.remove(id);
+    }
+    let mut config = sync_core::config::AppConfig::load();
+    config.sync_folders.retain(|f| f.id != id);
+    let _ = config.save();
+    if let Some(ui) = ui_weak.upgrade() {
+        update_ui_folders(&ui, app_state);
+    }
+}
+
+/// Drive'daki sync klasörünü ve anahtar kaydını siler.
+async fn delete_drive_sync(folder_id: &str) -> Result<(), String> {
+    let token = sync_core::auth::get_drive_token(false)
+        .await
+        .map_err(|e| i18n::tf("err_drive_login_needed", &[("e", &e.to_string())]))?;
+    let drive = sync_core::drive::DriveClient::new(token, None).map_err(|e| e.to_string())?;
+    drive
+        .delete_file(folder_id)
+        .await
+        .map_err(|e| i18n::tf("err_delete_drive", &[("e", &e.to_string())]))?;
+    let _ = drive.remove_sync_key(folder_id).await;
+    Ok(())
 }
 
 fn setup_ui(
     ui: &MainWindow,
-    ui_handle: Rc<RefCell<Option<MainWindow>>>,
+    _ui_handle: Rc<RefCell<Option<MainWindow>>>,
     app_state: Arc<Mutex<AppState>>,
 ) {
     // ── Dil ──────────────────────────────────────────────────────────────
-    apply_language(ui, &sync_core::config::AppConfig::load().language);
+    let cfg = sync_core::config::AppConfig::load();
+    apply_language(ui, &cfg.language);
     ui.set_status_text(tr_ss("ready"));
+
+    // ── Ayarlar ekranının başlangıç değerleri (config'ten) ─────────────────
+    ui.set_setting_autostart(cfg.auto_start_enabled);
+    ui.set_setting_start_in_tray(cfg.start_in_tray);
+    ui.set_setting_watch_changes(cfg.watch_local_changes);
+    ui.set_setting_auto_gc(cfg.auto_gc);
+    ui.set_setting_error_popups(cfg.show_error_popups);
+    ui.set_setting_network_popups(cfg.show_network_popups);
+    ui.set_setting_check_interval(
+        cfg.check_interval_minutes()
+            .to_string()
+            .into(),
+    );
+    ui.set_setting_threads(sync_core::config::clamp_threads(cfg.concurrent_threads).to_string().into());
+    ui.set_setting_dark_theme(cfg.is_dark_theme());
+    // Pencere (yeniden) açılınca sürmekte olan güncelleme durumunu göstersin
+    app_state.lock().unwrap().update.dirty = true;
 
     // ── Başlangıç durumu: keyring'den token var mı? ──────────────────────
     if sync_core::auth::is_token_cached() {
         ui.set_is_logged_in(true);
-        let ui_w3 = ui.as_weak();
-        tokio::spawn(async move { fetch_cloud_folders(ui_w3).await; });
     } else {
         // Autostart senaryosu: session henüz tam açılmamış, keyring kilitli olabilir.
         // Etkileşimsiz modda sessizce dene; başarılıysa UI'ı güncelle.
-        let ui_w3_b = ui.as_weak();
         let ui_weak = ui.as_weak();
         tokio::spawn(async move {
             if sync_core::auth::get_drive_token(false).await.is_ok() {
-                tokio::spawn(async move { fetch_cloud_folders(ui_w3_b).await; });
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak.upgrade() {
                         ui.set_is_logged_in(true);
@@ -215,8 +332,6 @@ fn setup_ui(
                         if let Some(ui) = ui_weak2.upgrade() {
                             ui.set_is_logged_in(true);
                             ui.set_is_logging_in(false);
-                            let ui_w3 = ui_weak2.clone();
-                            tokio::spawn(async move { fetch_cloud_folders(ui_w3).await; });
                         }
                     });
                 }
@@ -225,7 +340,6 @@ fn setup_ui(
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak2.upgrade() {
                             ui.set_is_logging_in(false);
-                            let ui_w3 = ui_weak2.clone();
                             show_error(&ui, msg.as_str().into());
                         }
                     });
@@ -243,11 +357,10 @@ fn setup_ui(
                 let ui_weak_timer = ui_weak_clip.clone();
                 let id_clone = id.to_string();
                 slint::Timer::single_shot(std::time::Duration::from_secs(2), move || {
-                    if let Some(ui) = ui_weak_timer.upgrade() {
-                        if ui.get_copy_feedback_id().to_string() == id_clone {
+                    if let Some(ui) = ui_weak_timer.upgrade()
+                        && ui.get_copy_feedback_id() == id_clone {
                             ui.set_copy_feedback_id("".into());
                         }
-                    }
                 });
             }
         }
@@ -278,6 +391,96 @@ fn setup_ui(
         crate::configure_autostart(cfg.auto_start_enabled, enabled);
     });
 
+    // ── Yeni ayarlar: değişiklik izleme, otomatik temizlik, hata/bağlantı popup'ları ──
+    // Not: çalışan bir sync döngüsü zaten başlamışsa bu ayarlar bir sonraki
+    // döngü turunda (veya sync yeniden başlatıldığında) etkili olur.
+    ui.on_watch_changes_toggled(move |enabled| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.watch_local_changes = enabled;
+        let _ = cfg.save();
+    });
+
+    ui.on_auto_gc_toggled(move |enabled| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.auto_gc = enabled;
+        let _ = cfg.save();
+    });
+
+    ui.on_error_popups_toggled(move |enabled| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.show_error_popups = enabled;
+        let _ = cfg.save();
+    });
+
+    ui.on_network_popups_toggled(move |enabled| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.show_network_popups = enabled;
+        let _ = cfg.save();
+    });
+
+    let ui_weak_interval = ui.as_weak();
+    ui.on_check_interval_changed(move |text| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        let parsed: u32 = text.trim().parse().unwrap_or(0);
+        let clamped = parsed.clamp(1, 1440); // 1 dk - 24 saat arası mantıklı sınır
+        cfg.sync_interval_minutes = clamped;
+        let _ = cfg.save();
+        if let Some(ui) = ui_weak_interval.upgrade() {
+            ui.set_setting_check_interval(clamped.to_string().into());
+        }
+    });
+
+    // ── Güncelleme: denetle / güncelle / yeniden başlat ──────────────────────
+    // Durum değişince pencereye HEMEN yansıt: bir sonraki tray tikini (≤100 ms) beklerse popup
+    // kısa süre önceki oturumun eski durumunu (ör. "Güncelsin") gösterir.
+    let app_state_check = app_state.clone();
+    let ui_weak_check = ui.as_weak();
+    ui.on_check_updates_requested(move || {
+        update_ui::start_check(&app_state_check);
+        if let Some(ui) = ui_weak_check.upgrade() {
+            update_ui::sync_window(&ui, &app_state_check);
+        }
+    });
+    let app_state_download = app_state.clone();
+    let ui_weak_download = ui.as_weak();
+    ui.on_update_now_requested(move || {
+        update_ui::start_download(&app_state_download);
+        if let Some(ui) = ui_weak_download.upgrade() {
+            update_ui::sync_window(&ui, &app_state_download);
+        }
+    });
+    let app_state_restart = app_state.clone();
+    ui.on_restart_requested(move || {
+        // Yeni ikili başlatıldıysa çık; başlatılamadıysa hata popup'ta gösterilir.
+        if update_ui::restart(&app_state_restart) {
+            let _ = slint::quit_event_loop();
+            std::process::exit(0);
+        }
+    });
+
+    // Tema anında arayüzde uygulanır (Theme.dark çift yönlü bağlı); burada yalnızca kalıcı kılınır.
+    ui.on_theme_changed(move |dark| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        cfg.theme = crate::sync_core::config::theme_name(dark).to_string();
+        let _ = cfg.save();
+    });
+
+    let ui_weak_threads = ui.as_weak();
+    ui.on_threads_changed(move |text| {
+        let mut cfg = crate::sync_core::config::AppConfig::load();
+        // Boş/geçersiz girdi varsayılana döner; aralık dışı değer sınırlara çekilir.
+        let parsed: u32 = text
+            .trim()
+            .parse()
+            .unwrap_or(crate::sync_core::config::DEFAULT_THREADS);
+        let clamped = crate::sync_core::config::clamp_threads(parsed);
+        cfg.concurrent_threads = clamped;
+        let _ = cfg.save();
+        if let Some(ui) = ui_weak_threads.upgrade() {
+            ui.set_setting_threads(clamped.to_string().into());
+        }
+    });
+
     let ui_weak_lang = ui.as_weak();
     ui.on_language_changed(move |lang| {
         let mut cfg = crate::sync_core::config::AppConfig::load();
@@ -304,42 +507,114 @@ fn setup_ui(
         }
 
         tokio::spawn(async move {
-            let result = scan_cloud_into_config().await;
+            let result = scan_cloud_folders().await;
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak_bg.upgrade() {
-                    update_ui_folders(&ui, &app_state_bg);
                     match result {
-                        Ok(added) => {
+                        Ok(items) => {
+                            app_state_bg.lock().unwrap().cloud_items = items;
+                            update_ui_folders(&ui, &app_state_bg);
+                            let n = {
+                                let cfg = sync_core::config::AppConfig::load();
+                                let st = app_state_bg.lock().unwrap();
+                                cloud_only(&cfg, &st).len()
+                            };
                             if !ui.get_is_syncing() {
-                                if added > 0 {
-                                    ui.set_status_text(i18n::tf("syncs_found", &[("n", &added.to_string())]).into());
+                                if n > 0 {
+                                    ui.set_status_text(i18n::tf("syncs_found", &[("n", &n.to_string())]).into());
                                 } else {
                                     ui.set_status_text(tr_ss("no_new_syncs"));
                                 }
                             }
                         }
-                        Err(e) => show_error(&ui, e.as_str().into()),
+                        Err(e) => {
+                            update_ui_folders(&ui, &app_state_bg);
+                            show_error(&ui, e.as_str().into());
+                        }
                     }
                 }
             });
         });
     });
 
-    ui.on_remove_sync_folder(move |id| {
-        let id_str = id.to_string();
-        {
-            let mut state = app_state_remove.lock().unwrap();
-            if let Some(tx) = state.tasks.remove(&id_str) {
-                let _ = tx.send(());
-            }
-            state.folder_states.remove(&id_str);
-        }
+    // ── Drive'daki bir sync'i bu bilgisayara ekle (klasörü kullanıcı seçer) ──
+    let ui_weak_add = ui.as_weak();
+    let app_state_add = app_state.clone();
+    ui.on_add_cloud_sync(move |code, name| {
+        let code = code.to_string();
+        let cloud_name = name.to_string();
+
+        let Some(path) = FileDialog::new()
+            .set_title(i18n::t("pick_download_folder"))
+            .pick_folder()
+        else { return };
+
         let mut config = sync_core::config::AppConfig::load();
-        config.sync_folders.retain(|f| f.id != id_str);
-        let _ = config.save();
-        if let Some(u) = ui_remove.upgrade() {
-            update_ui_folders(&u, &app_state_remove);
+        if config.sync_folders.iter().any(|f| drive_folder_id(&f.id) == drive_folder_id(&code)) {
+            return;
         }
+        if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
+            if let Some(ui) = ui_weak_add.upgrade() {
+                show_error(&ui, tr_ss("err_folder_exists"));
+            }
+            return;
+        }
+
+        let display_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.to_string())
+            .unwrap_or(cloud_name);
+
+        config.sync_folders.push(sync_core::config::SyncFolder {
+            id: code.clone(),
+            name: display_name,
+            path: path.to_string_lossy().to_string(),
+            code: code.clone(),
+        });
+        if let Err(e) = config.save()
+            && let Some(ui) = ui_weak_add.upgrade() {
+                show_error(&ui, e.as_str().into());
+            }
+
+        // Satır anında "indiriliyor" durumunda görünsün, sonra döngü başlasın
+        update_status(&ui_weak_add, &app_state_add, &code, &i18n::t("status_pulling"), true);
+        if let Some(ui) = ui_weak_add.upgrade() {
+            update_ui_folders(&ui, &app_state_add);
+        }
+        start_sync_loop(ui_weak_add.clone(), app_state_add.clone(), code, path);
+    });
+
+    // ── Silme dialogu onayı: bu PC'den kaldır (+ isteğe bağlı Drive'dan sil) ──
+    let ui_weak_del = ui.as_weak();
+    let app_state_del = app_state.clone();
+    ui.on_confirm_delete_sync(move |id, delete_from_drive| {
+        let id = id.to_string();
+        remove_local_sync(&ui_weak_del, &app_state_del, &id);
+
+        if delete_from_drive {
+            let fid = drive_folder_id(&id).to_string();
+            let ui_bg = ui_weak_del.clone();
+            let st_bg = app_state_del.clone();
+            tokio::spawn(async move {
+                let res = delete_drive_sync(&fid).await;
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_bg.upgrade() {
+                        match res {
+                            Ok(()) => {
+                                st_bg.lock().unwrap().cloud_items.retain(|(c, _)| drive_folder_id(c) != fid);
+                                update_ui_folders(&ui, &st_bg);
+                            }
+                            Err(e) => show_error(&ui, e.as_str().into()),
+                        }
+                    }
+                });
+            });
+        }
+    });
+
+    ui.on_remove_sync_folder(move |id| {
+        remove_local_sync(&ui_remove, &app_state_remove, id.as_str());
     });
 
     let ui_weak_manual = ui.as_weak();
@@ -366,7 +641,7 @@ fn setup_ui(
 
         if let Some(t) = trigger {
             // Anında geri bildirim: satır hemen "eşitleniyor" olsun, buton pasifleşsin
-            update_status(&ui_weak_manual, &app_state_manual, &id, &i18n::t("status_pushing"), true);
+            update_status(&ui_weak_manual, &app_state_manual, &id, &i18n::t("status_checking"), true);
             t.notify_one();
             return;
         }
@@ -375,7 +650,7 @@ fn setup_ui(
         let config = sync_core::config::AppConfig::load();
         if let Some(f) = config.sync_folders.iter().find(|f| f.id == id) {
             let code = if f.code.is_empty() { f.id.clone() } else { f.code.clone() };
-            update_status(&ui_weak_manual, &app_state_manual, &id, &i18n::t("status_pulling"), true);
+            update_status(&ui_weak_manual, &app_state_manual, &id, &i18n::t("status_checking"), true);
             start_sync_loop(
                 ui_weak_manual.clone(),
                 app_state_manual.clone(),
@@ -388,7 +663,7 @@ fn setup_ui(
     ui.on_open_sync_folder(move |_id| {
         let config = sync_core::config::AppConfig::load();
         if let Some(f) = config.sync_folders.first() { let path = &f.path;
-            let _ = webbrowser::open(&path);
+            let _ = webbrowser::open(path);
         }
     });
 
@@ -415,9 +690,13 @@ fn setup_ui(
         for (_, tx) in state.tasks.drain() {
             let _ = tx.send(());
         }
+        state.cloud_items.clear();
         drop(state);
 
         sync_core::auth::logout();
+        if let Some(ui) = ui_weak.upgrade() {
+            update_ui_folders(&ui, &app_state_logout);
+        }
 
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_is_logged_in(false);
@@ -446,14 +725,14 @@ fn setup_ui(
             }
             return;
         }
-        let hex_key = hex::encode(&raw);
+        let hex_key = hex::encode(raw);
         let folder_name = path.file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(i18n::t("default_folder_name").as_str())
             .to_string();
 
-        let mut config = sync_core::config::AppConfig::load();
-        if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy().to_string()) {
+        let config = sync_core::config::AppConfig::load();
+        if config.sync_folders.iter().any(|f| f.path == path.to_string_lossy()) {
             if let Some(ui) = ui_weak.upgrade() {
                 show_error(&ui, tr_ss("err_folder_exists"));
             }
@@ -482,6 +761,9 @@ fn setup_ui(
                         Ok(folder_id) => {
                             // save keys
                             let _ = drive.save_sync_key(&folder_id, &hex_key).await;
+                            // Kullanıcının seçtiği gerçek klasör adını sakla (aksi halde "Drive'da"
+                            // listesinde ConnectSync_<hex> önekinden kalan rastgele görünümlü bir ad çıkar).
+                            let _ = drive.set_folder_display_name(&folder_id, &folder_name).await;
 
                             let universal_code = format!("cs-{}-{}", folder_id, hex_key);
                             
@@ -560,16 +842,11 @@ fn setup_ui(
         let mut config = sync_core::config::AppConfig::load();
         config.sync_folders.push(sync_core::config::SyncFolder { id: sync_code.clone(), name: folder_name.clone(), path: path.to_string_lossy().to_string(), code: sync_code.clone() });
         
-        if let Some(ui) = ui_weak.upgrade() { update_ui_folders(&ui, &app_state_connect); }
-        if let Err(e) = config.save() {
-            if let Some(ui) = ui_weak.upgrade() {
+        if let Err(e) = config.save()
+            && let Some(ui) = ui_weak.upgrade() {
                 show_error(&ui, e.as_str().into());
             }
-        }
-
-        {
-            let mut state = app_state_connect.lock().unwrap();
-        }
+        if let Some(ui) = ui_weak.upgrade() { update_ui_folders(&ui, &app_state_connect); }
 
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_active_sync_code(sync_code.clone().as_str().into());
@@ -585,17 +862,8 @@ fn setup_ui(
     // ── Stop Sync ─────────────────────────────────────────────────────────
     let ui_weak = ui.as_weak();
     let app_state_stop = app_state.clone();
-    ui.on_stop_sync(move |_id| {
-        let mut state = app_state_stop.lock().unwrap();
-        for (_, tx) in state.tasks.drain() {
-            let _ = tx.send(());
-        }
-        drop(state);
-
-        // Config'den sync kodu temizle
-        let mut config = sync_core::config::AppConfig::load();
-        config.sync_folders.clear();
-        let _ = config.save();
+    ui.on_stop_sync(move |id| {
+        remove_local_sync(&ui_weak, &app_state_stop, id.as_str());
 
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_active_sync_code("".into());
@@ -607,20 +875,28 @@ fn setup_ui(
     });
 
     // ── Pencere Kontrolleri ───────────────────────────────────────────────
-    let handle_clone = ui_handle.clone();
+    // Pencere yok edilmez, sadece gizlenir (tray'e iner); tray'den tekrar aynı pencere gösterilir.
+    let ui_weak_min = ui.as_weak();
     ui.on_minimize_requested(move || {
-        let h = handle_clone.clone();
-        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
-            *h.borrow_mut() = None;
-        });
+        if let Some(ui) = ui_weak_min.upgrade() {
+            let _ = ui.hide();
+        }
     });
 
-    let handle_clone2 = ui_handle.clone();
+    let ui_weak_close = ui.as_weak();
     ui.on_close_requested(move || {
-        let h = handle_clone2.clone();
-        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
-            *h.borrow_mut() = None;
-        });
+        if let Some(ui) = ui_weak_close.upgrade() {
+            let _ = ui.hide();
+        }
+    });
+
+    // Alt+F4 / işletim sistemi kapatma isteği: pencereyi kapatma, çıkış onay penceresini göster
+    let ui_weak_os_close = ui.as_weak();
+    ui.window().on_close_requested(move || {
+        if let Some(ui) = ui_weak_os_close.upgrade() {
+            ui.set_show_quit_dialog(true);
+        }
+        slint::CloseRequestResponse::KeepWindowShown
     });
 }
 
@@ -706,9 +982,10 @@ async fn sync_loop_task(
     };
 
     // Drive'da ana klasörü oluştur / bul (Vault başına ayrı klasör)
-    let parts: Vec<&str> = sync_code.split('-').collect();
-    let (folder_id, hex_key) = if parts.len() == 3 && parts[0] == "cs" {
-        (parts[1].to_string(), parts[2].to_string())
+    // Kod formatı: cs-{driveFolderId}-{hexKey}. Drive ID'leri '-' içerebildiği için SON '-' ayırıcıdır.
+    let parsed = sync_code.strip_prefix("cs-").and_then(|r| r.rsplit_once('-'));
+    let (folder_id, _hex_key) = if let Some((fid, hk)) = parsed {
+        (fid.to_string(), hk.to_string())
     } else {
         // Backward compatibility
         let folder_name = format!("ConnectSync_{}", &sync_code[0..8.min(sync_code.len())]);
@@ -778,38 +1055,61 @@ async fn sync_loop_task(
         }
     };
 
-    let engine = Arc::new(sync_core::engine::SyncEngine::new_with_arc(
-        drive,
-        keys,
-        folder_id,
-        folder.clone(),
-    ));
+    // Arayüz zamanlayıcısının okuyacağı ilerleme/ağ durumu; engine'e taşınmadan önce sakla.
+    let progress_handle = drive.progress.clone();
+    {
+        let mut st = app_state_loop.lock().unwrap();
+        let fs = st
+            .folder_states
+            .entry(sync_code.clone())
+            .or_default();
+        fs.progress = Some(progress_handle);
+    }
 
-    // Watcher başlat
-    let watcher_obj = sync_core::watcher::LocalWatcher::new(
-        folder.to_str().unwrap_or(".")
+    // Ayarlar sync başlarken bir kez okunur (eşzamanlı aktarım sayısı bir sonraki
+    // sync başlangıcında geçerli olur).
+    let config = sync_core::config::AppConfig::load();
+    let engine = Arc::new(
+        sync_core::engine::SyncEngine::new_with_arc(drive, keys, folder_id, folder.clone())
+            .with_threads(config.concurrent_threads),
     );
+
+    // Watcher başlat (ayarlardan kapatılabilir: yalnızca periyodik taramayla yetin)
     let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::channel::<String>(64);
-    let _debouncer = watcher_obj.start_watching(watcher_tx).ok();
+    let _debouncer = if config.watch_local_changes {
+        let watcher_obj = sync_core::watcher::LocalWatcher::new(folder.to_str().unwrap_or("."));
+        watcher_obj.start_watching(watcher_tx).ok()
+    } else {
+        drop(watcher_tx);
+        None
+    };
 
     // Periyodik timer (Config'den oku, yoksa 5 dk)
-    let config = sync_core::config::AppConfig::load();
-    let mins = if config.sync_interval_minutes == 0 { 5 } else { config.sync_interval_minutes as u64 };
+    let mins = u64::from(config.check_interval_minutes());
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(mins * 60));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     // Döngü her turda bir kere sync yapıp sonra bekler
     loop {
-        // 1. Önce Pull (Drive -> Yerel)
-        update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_pulling"), true);
+        // 1. Önce Pull (Drive -> Yerel). "İndiriliyor" denmez: önce farklar incelenir; metin,
+        // motorun gerçek fazına göre kendiliğinden değişir (bkz. `with_phase_status`).
+        update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_checking"), true);
+        let mut pulled = 0usize;
         tokio::select! {
             _ = &mut stop_rx => {
                 update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_stopped"), false);
                 break;
             }
-            res = engine.run_sync_pull(&folder, true) => {
-                if let Err(e) = res {
-                    update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("err_pull", &[("e", &e.to_string())]), false);
+            res = with_phase_status(
+                engine.run_sync_pull(&folder, true),
+                &engine.drive_client.progress,
+                &ui_weak,
+                &app_state_loop,
+                &sync_code,
+            ) => {
+                match res {
+                    Ok(report) => pulled = report.restored_files,
+                    Err(e) => update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("err_pull", &[("e", &e.to_string())]), false),
                 }
             }
         }
@@ -820,7 +1120,7 @@ async fn sync_loop_task(
                 update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_stopped"), false);
                 break;
             }
-            _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code) => {}
+            _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code, pulled) => {}
         }
 
         tokio::select! {
@@ -840,17 +1140,96 @@ async fn sync_loop_task(
     }
 }
 
-async fn run_push(engine: &Arc<sync_core::engine::SyncEngine>, ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppState>>, sync_code: &str) {
-    update_status(ui_weak, app_state, sync_code, &i18n::t("status_pushing"), true);
-    match engine.run_sync_push().await {
+/// Motorun o anki fazına göre gösterilecek durum metninin anahtarı.
+/// - Hazırlık (index/manifest/yerel tarama) = farklar inceleniyor.
+/// - İndirme/yükleme yalnızca gerçekten aktarılacak dosya varsa söylenir; motor aktarılacak
+///   dosya olmasa da `begin(PULL/PUSH, 0, 0)` çağırdığı için `total_files` bakılır.
+/// - Boşta (pull ile push arası) `None`: mevcut metin değişmez.
+fn phase_status_key(s: &sync_core::progress::Snapshot) -> Option<&'static str> {
+    use sync_core::progress::{PHASE_PREPARE, PHASE_PULL, PHASE_PUSH};
+    match s.phase {
+        PHASE_PULL if s.total_files > 0 => Some("status_pulling"),
+        PHASE_PUSH if s.total_files > 0 => Some("status_uploading"),
+        PHASE_PREPARE | PHASE_PULL | PHASE_PUSH => Some("status_checking"),
+        _ => None,
+    }
+}
+
+/// Bir sync turu bittiğinde gösterilecek metin: (locale anahtarı, `{n}` değeri).
+/// Hata her şeyin önüne geçer; hiçbir şey değişmediyse "fark yok".
+fn final_sync_message(
+    pulled: usize,
+    uploaded: usize,
+    removed: usize,
+    failed: usize,
+) -> (&'static str, Option<usize>) {
+    if failed > 0 {
+        return ("status_files_failed", Some(failed));
+    }
+    let changed = pulled + uploaded + removed;
+    if changed > 0 {
+        ("status_files_updated", Some(changed))
+    } else {
+        ("status_no_diff", None)
+    }
+}
+
+/// `fut` çalışırken motorun fazını izler ve durum metnini fazla birlikte günceller
+/// ("inceleniyor" → "indiriliyor"/"yükleniyor"). Metin yalnızca faz değişince yazılır.
+async fn with_phase_status<F: std::future::Future>(
+    fut: F,
+    progress: &sync_core::progress::Progress,
+    ui_weak: &slint::Weak<MainWindow>,
+    app_state: &Arc<Mutex<AppState>>,
+    sync_code: &str,
+) -> F::Output {
+    tokio::pin!(fut);
+    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(200));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut last: Option<&'static str> = None;
+    loop {
+        tokio::select! {
+            out = &mut fut => return out,
+            _ = ticker.tick() => {
+                if let Some(key) = phase_status_key(&progress.snapshot())
+                    && last != Some(key)
+                {
+                    last = Some(key);
+                    update_status(ui_weak, app_state, sync_code, &i18n::t(key), true);
+                }
+            }
+        }
+    }
+}
+
+async fn run_push(
+    engine: &Arc<sync_core::engine::SyncEngine>,
+    ui_weak: &slint::Weak<MainWindow>,
+    app_state: &Arc<Mutex<AppState>>,
+    sync_code: &str,
+    pulled: usize,
+) {
+    update_status(ui_weak, app_state, sync_code, &i18n::t("status_checking"), true);
+    let result = with_phase_status(
+        engine.run_sync_push(),
+        &engine.drive_client.progress,
+        ui_weak,
+        app_state,
+        sync_code,
+    )
+    .await;
+    match result {
         Ok(report) => {
             // Kullanıcıya teknik sayaçlar yerine sade bir durum göster
-            let msg = if !report.failed_files.is_empty() {
-                i18n::tf("status_files_failed", &[("n", &report.failed_files.len().to_string())])
-            } else if report.uploaded_files > 0 {
-                i18n::tf("status_files_updated", &[("n", &report.uploaded_files.to_string())])
-            } else {
-                i18n::t("status_up_to_date")
+            let (key, n) = final_sync_message(
+                pulled,
+                report.uploaded_files,
+                report.removed_from_manifest,
+                report.failed_files.len(),
+            );
+            let msg = match n {
+                Some(n) => i18n::tf(key, &[("n", &n.to_string())]),
+                None => i18n::t(key),
             };
             update_status(ui_weak, app_state, sync_code, &msg, false);
             if !report.failed_files.is_empty() {
@@ -861,11 +1240,13 @@ async fn run_push(engine: &Arc<sync_core::engine::SyncEngine>, ui_weak: &slint::
             }
             
             // Eğer yeni dosyalar yüklendiyse veya ara sıra GC tetiklemek isteniyorsa:
-            // Arka planda GC çalıştır (Push akışını bloklamaması için tokio::spawn)
-            let engine_clone = engine.clone();
-            tokio::spawn(async move {
-                let _ = engine_clone.run_gc().await;
-            });
+            // Arka planda GC çalıştır (Push akışını bloklamaması için tokio::spawn); ayarlardan kapatılabilir.
+            if sync_core::config::AppConfig::load().auto_gc {
+                let engine_clone = engine.clone();
+                tokio::spawn(async move {
+                    let _ = engine_clone.run_gc().await;
+                });
+            }
         }
         Err(e) => {
             let msg = i18n::tf("err_sync", &[("e", &e.to_string())]);
@@ -880,7 +1261,7 @@ fn update_status(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppSta
     let app_state_clone = app_state.clone();
     {
         let mut st = app_state.lock().unwrap();
-        let fs = st.folder_states.entry(folder_id.to_string()).or_insert_with(crate::FolderState::default);
+        let fs = st.folder_states.entry(folder_id.to_string()).or_default();
         fs.status = msg.clone();
         fs.is_syncing = syncing;
         fs.error = "".into();
@@ -901,7 +1282,7 @@ fn update_error(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppStat
     let app_state_clone = app_state.clone();
     {
         let mut st = app_state.lock().unwrap();
-        let fs = st.folder_states.entry(folder_id.to_string()).or_insert_with(crate::FolderState::default);
+        let fs = st.folder_states.entry(folder_id.to_string()).or_default();
         fs.error = err.clone();
         fs.is_syncing = false;
     }
@@ -912,6 +1293,65 @@ fn update_error(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<AppStat
             show_error(&ui, err.as_str().into()); // Show global toast as well if needed
         }
     });
+}
+
+/// Aktif sync ekranındaki ilerleme çubuğunu (MB/GB) ve bağlantı uyarısını,
+/// o anda ekranda gösterilen `active_sync_code`'un ilerleme durumuna göre günceller.
+/// Ana pencere zamanlayıcısından (tray timer) periyodik olarak çağrılır.
+fn update_progress_ui(ui: &MainWindow, app_state: &Arc<Mutex<AppState>>) {
+    let active_id = ui.get_active_sync_code().to_string();
+    if active_id.is_empty() || active_id == "pending" || !ui.get_is_syncing() {
+        if ui.get_progress_visible() {
+            ui.set_progress_visible(false);
+        }
+        if ui.get_net_warning() {
+            ui.set_net_warning(false);
+        }
+        return;
+    }
+
+    let snapshot = {
+        let st = app_state.lock().unwrap();
+        st.folder_states
+            .get(&active_id)
+            .and_then(|fs| fs.progress.as_ref())
+            .map(|p| p.snapshot())
+    };
+
+    let Some(s) = snapshot else {
+        ui.set_progress_visible(false);
+        ui.set_net_warning(false);
+        return;
+    };
+
+    let show_bar = s.total_bytes > 0;
+    ui.set_progress_visible(show_bar);
+    if show_bar {
+        let frac = (s.done_bytes as f32 / s.total_bytes as f32).clamp(0.0, 1.0);
+        ui.set_progress_fraction(frac);
+        let pct = (frac * 100.0).round() as u32;
+        ui.set_progress_text(
+            format!(
+                "{} · %{pct} · {}/{} dosya",
+                sync_core::progress::format_bytes_pair(s.done_bytes, s.total_bytes),
+                s.done_files,
+                s.total_files
+            )
+            .into(),
+        );
+    } else {
+        ui.set_progress_text("".into());
+    }
+
+    // ~300 ms'de bir çalıştığı için config'i (dosya + keyring) her seferinde okumak yerine
+    // ayarın arayüzdeki yansımasını kullan; başlangıçta config'ten dolduruluyor ve anahtara bağlı.
+    let net_issue = s.net_retry > 0 && ui.get_setting_network_popups();
+    ui.set_net_warning(net_issue);
+    if net_issue {
+        ui.set_net_warning_text(
+            i18n::tf("net_waiting", &[("n", s.net_retry.to_string())]).into(),
+        );
+    }
 }
 
 fn create_window(
@@ -959,9 +1399,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = sync_core::config::AppConfig::load();
 
     let is_autostart = std::env::args().any(|a| a == "--autostart");
-    if let Ok(app_path) = std::env::current_exe() {
-        if let Some(s) = app_path.to_str() {
-            if let Ok(auto) = auto_launch::AutoLaunchBuilder::new()
+    if let Ok(app_path) = std::env::current_exe()
+        && let Some(s) = app_path.to_str()
+            && let Ok(auto) = auto_launch::AutoLaunchBuilder::new()
                 .set_app_name("ConnectSync")
                 .set_app_path(s)
                 .set_args(&["--autostart"])
@@ -970,8 +1410,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 if config.auto_start_enabled { let _ = auto.enable(); }
                 else { let _ = auto.disable(); }
             }
-        }
-    }
 
     // Autostart'ta pencere gizli başlar; sync daha önce aktifse arka planda başlat
     if !is_autostart {
@@ -997,10 +1435,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    // Önceki güncellemeden kalan geçici/eski ikili dosyaları temizle
+    updater::cleanup_stale_files();
+
+    // Buluttaki (bu PC'de olmayan) sync'leri açılışta ve aralıklarla kendiliğinden bul
+    spawn_background_cloud_scan(app_state.clone());
+
     // 100ms tray timer
     let slint_timer = slint::Timer::default();
     let handle_for_timer = ui_handle.clone();
     let app_state_timer = app_state.clone();
+    let progress_tick = std::cell::Cell::new(0u32);
     slint_timer.start(
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(100),
@@ -1023,11 +1468,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
 
             while let Ok(event) = tray_channel.try_recv() {
-                if let tray_icon::TrayIconEvent::Click { button, .. } = event {
-                    if button == tray_icon::MouseButton::Left {
+                if let tray_icon::TrayIconEvent::Click { button, .. } = event
+                    && button == tray_icon::MouseButton::Left {
                         should_show = true;
                     }
-                }
             }
 
             if should_show {
@@ -1037,59 +1481,99 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     new_ui.show().unwrap();
                     *handle = Some(new_ui);
                 } else {
+                    // Aynı pencereyi göster/öne getir (ikinci pencere açma)
                     let w = handle.as_ref().unwrap();
                     w.show().unwrap();
+                    w.window().set_minimized(false);
                     w.window().request_redraw();
                 }
             }
+
+            // Arka plan bulut taraması yeni liste getirdiyse arayüzü yenile.
+            let cloud_changed = std::mem::take(&mut app_state_timer.lock().unwrap().cloud_dirty);
+            if cloud_changed
+                && let Some(ui) = handle_for_timer.borrow().as_ref()
+            {
+                update_ui_folders(ui, &app_state_timer);
+            }
+
+            // Güncelleme popup'u: durum değiştiyse ya da indirme sürüyorsa pencereye yansıt.
+            if let Some(ui) = handle_for_timer.borrow().as_ref() {
+                update_ui::sync_window(ui, &app_state_timer);
+            }
+
+            // İlerleme çubuğu / bağlantı uyarısı: ~300ms'de bir güncelle (her 100ms'de gerek yok).
+            progress_tick.set(progress_tick.get().wrapping_add(1));
+            if progress_tick.get().is_multiple_of(3)
+                && let Some(ui) = handle_for_timer.borrow().as_ref() {
+                    update_progress_ui(ui, &app_state_timer);
+                }
         },
     );
 
     slint::run_event_loop_until_quit().unwrap();
     Ok(())
 }
-async fn fetch_cloud_folders(ui_weak: slint::Weak<crate::MainWindow>) {
-    if let Ok(token) = crate::sync_core::auth::get_drive_token(false).await {
-        if let Ok(client) = crate::sync_core::drive::DriveClient::new(token, None) {
-            if let Ok(folders) = client.list_cloud_folders().await {
-                let mut config = crate::sync_core::config::AppConfig::load();
-                let local_codes: std::collections::HashSet<String> = config.sync_folders.iter().map(|f| {
-                    if f.code.len() >= 8 { f.code[0..8].to_string() } else { f.code.clone() }
-                }).collect();
+/// Arka plan taramasında hata sonrası ilk yeniden deneme bekleme süresi.
+const CLOUD_SCAN_RETRY_BASE: std::time::Duration = std::time::Duration::from_secs(30);
 
-                let mut cloud_items = Vec::new();
-                for (_, name) in folders {
-                    let prefix = name.replace("ConnectSync_", "");
-                    // Sadece sistemde aktif olmayanları göster
-                    if !local_codes.contains(&prefix) {
-                        cloud_items.push(crate::SyncFolderItem {
-                            id: "".into(),
-                            name: prefix.into(),
-                            path: "Bulutta".into(),
-                            code: "".into(),
-                            status: "".into(),
-                            is_syncing: false,
-                        });
-                    }
-                }
+/// Bir sonraki bulut taramasına kadar beklenecek süre. Başarıda ayarlardaki kontrol aralığı;
+/// ardışık hatalarda 30 sn'den başlayıp iki katına çıkan (ama aralığı aşmayan) bir bekleme.
+/// Böylece otomatik başlatmada ağ henüz hazır değilse liste 5 dk beklemeden dolar, ağ
+/// kalıcı olarak yoksa da log/istek boğulmaz.
+fn next_scan_delay(interval: std::time::Duration, consecutive_failures: u32) -> std::time::Duration {
+    if consecutive_failures == 0 {
+        return interval;
+    }
+    let exp = consecutive_failures.saturating_sub(1).min(6);
+    (CLOUD_SCAN_RETRY_BASE * 2u32.pow(exp)).min(interval)
+}
 
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = ui_weak.upgrade() {
-                        let model = std::rc::Rc::new(slint::VecModel::<crate::SyncFolderItem>::default());
-                        for item in cloud_items {
-                            model.push(item);
-                        }
-                        ui.set_cloud_folders(model.into());
-                    }
-                });
-            }
-        }
+/// Tarama sonucunu `AppState`'e yazar; liste değiştiyse arayüz yenileme bayrağını kaldırır.
+/// Tarama sürerken çıkış yapıldıysa (oturum silinmişse) eski hesabın klasörleri geri gelmesin
+/// diye sonuç atılır.
+fn publish_cloud_items(app_state: &Arc<Mutex<AppState>>, items: Vec<(String, String)>) {
+    if !sync_core::auth::is_token_cached() {
+        return;
+    }
+    let mut st = app_state.lock().unwrap();
+    if st.cloud_items != items {
+        st.cloud_items = items;
+        st.cloud_dirty = true;
     }
 }
 
-/// Drive'daki ConnectSync klasörlerini + appDataFolder'daki anahtar kaydını okuyup
-/// bu PC'nin config'ine ekler. Eklenen sync sayısını döndürür.
-async fn scan_cloud_into_config() -> Result<usize, String> {
+/// Uygulama açılır açılmaz ve sonra "Kontrol aralığı" ayarında Drive'ı sessizce tarar: bulutta
+/// olup bu PC'ye eklenmemiş sync'ler "Buluttan Bul"a basmadan listede görünür (~1 MB'ın altı).
+/// Oturum yoksa tarama atlanır. Pencereye dokunmaz (tray modunda pencere olmayabilir); yalnızca
+/// `AppState`'i günceller, arayüzü tray zamanlayıcısı yeniler. Hatalar popup açmaz, log'lanır.
+fn spawn_background_cloud_scan(app_state: Arc<Mutex<AppState>>) {
+    tokio::spawn(async move {
+        let mut failures = 0u32;
+        loop {
+            if sync_core::auth::is_token_cached() {
+                match scan_cloud_folders().await {
+                    Ok(items) => {
+                        failures = 0;
+                        publish_cloud_items(&app_state, items);
+                    }
+                    Err(e) => {
+                        failures = failures.saturating_add(1);
+                        println!("Bulut taraması başarısız ({failures}. deneme): {e}");
+                    }
+                }
+            }
+            let config = sync_core::config::AppConfig::load();
+            let interval = std::time::Duration::from_secs(u64::from(config.check_interval_minutes()) * 60);
+            tokio::time::sleep(next_scan_delay(interval, failures)).await;
+        }
+    });
+}
+
+/// Drive'daki ConnectSync klasörlerini + appDataFolder'daki anahtar kaydını okur.
+/// Anahtarı bilinen her klasör için (kod, ad) döndürür; hangilerinin bu PC'de olduğu
+/// `cloud_only` ile ayıklanır. Config'e hiçbir şey eklenmez — kullanıcı "Ekle / İndir" der.
+async fn scan_cloud_folders() -> Result<Vec<(String, String)>, String> {
     let token = sync_core::auth::get_drive_token(false)
         .await
         .map_err(|e| i18n::tf("err_drive_login_needed", &[("e", &e.to_string())]))?;
@@ -1104,9 +1588,9 @@ async fn scan_cloud_into_config() -> Result<usize, String> {
         .await
         .map_err(|e| i18n::tf("err_read_keys", &[("e", &e.to_string())]))?;
 
-    let mut config = sync_core::config::AppConfig::load();
+    let config = sync_core::config::AppConfig::load();
 
-    // Bu PC'de zaten olan ama bulutta anahtarı kayıtlı olmayan sync'leri kaydet
+    // Bu PC'de olup bulutta anahtarı kayıtlı olmayan sync'lerin anahtarını kaydet
     // (eski sürümde kayıt sessizce başarısız olmuş olabilir). Kod formatı: cs-{folderId}-{hexKey}
     let local_codes: Vec<String> = config
         .sync_folders
@@ -1114,35 +1598,162 @@ async fn scan_cloud_into_config() -> Result<usize, String> {
         .map(|f| if f.code.is_empty() { f.id.clone() } else { f.code.clone() })
         .collect();
     for code in local_codes {
-        if let Some((fid, hex_key)) = code.strip_prefix("cs-").and_then(|r| r.rsplit_once('-')) {
-            if !keys.contains_key(fid) && drive.save_sync_key(fid, hex_key).await.is_ok() {
+        if let Some((fid, hex_key)) = code.strip_prefix("cs-").and_then(|r| r.rsplit_once('-'))
+            && !keys.contains_key(fid) && drive.save_sync_key(fid, hex_key).await.is_ok() {
                 keys.insert(fid.to_string(), hex_key.to_string());
             }
+    }
+
+    let mut items = Vec::new();
+    for (fid, name) in cloud_folders {
+        let Some(hex_key) = keys.get(&fid) else { continue };
+        // `list_cloud_folders` zaten kullanıcının verdiği gerçek adı döndürür (appProperties'ten);
+        // yalnızca eski/adsız klasörlerde hâlâ "ConnectSync_<hex>" biçimindeki Drive adı gelir —
+        // o durumda önek temizlenir (aksi halde kullanıcıya rastgele bir hex görünür).
+        let display = if name.starts_with("ConnectSync_") {
+            name.trim_start_matches("ConnectSync_").to_string()
+        } else {
+            name
+        };
+        items.push((format!("cs-{}-{}", fid, hex_key), display));
+    }
+    Ok(items)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sync_core::config::{AppConfig, SyncFolder};
+    use std::time::Duration;
+
+    fn folder(id: &str, code: &str) -> SyncFolder {
+        SyncFolder { id: id.into(), name: "x".into(), path: "/tmp/x".into(), code: code.into() }
+    }
+
+    fn state_with(items: &[(&str, &str)]) -> AppState {
+        AppState {
+            cloud_items: items.iter().map(|(c, n)| (c.to_string(), n.to_string())).collect(),
+            ..AppState::default()
         }
     }
 
-    let mut added = 0;
-    for (fid, name) in cloud_folders {
-        let Some(hex_key) = keys.get(&fid) else { continue };
-        let code = format!("cs-{}-{}", fid, hex_key);
-        let prefix = format!("cs-{}-", fid);
-        if config.sync_folders.iter().any(|f| f.id == code || f.code.starts_with(&prefix) || f.id.starts_with(&prefix)) {
-            continue;
-        }
-        let display_name = name.replace("ConnectSync_", "");
-        config.sync_folders.push(sync_core::config::SyncFolder {
-            id: code.clone(),
-            name: display_name.clone(),
-            path: dirs::download_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("ConnectSync")
-                .join(&display_name)
-                .to_string_lossy()
-                .to_string(),
-            code,
-        });
-        added += 1;
+    #[test]
+    fn drive_folder_id_takes_everything_between_prefix_and_last_dash() {
+        // Drive ID'leri '-' içerebilir; yalnızca SON '-' ayırıcıdır.
+        assert_eq!(drive_folder_id("cs-1a-B_c-d-deadbeef"), "1a-B_c-d");
+        assert_eq!(drive_folder_id("cs-abc-key"), "abc");
+        assert_eq!(drive_folder_id("kodsuz"), "kodsuz");
     }
-    let _ = config.save();
-    Ok(added)
+
+    #[test]
+    fn cloud_only_hides_folders_already_on_this_pc() {
+        let mut cfg = AppConfig::default();
+        cfg.sync_folders.push(folder("ignored", "cs-F1-k1"));
+        let st = state_with(&[("cs-F1-k1", "Müzik"), ("cs-F2-k2", "Belgeler")]);
+        assert_eq!(cloud_only(&cfg, &st), vec![("cs-F2-k2".to_string(), "Belgeler".to_string())]);
+    }
+
+    #[test]
+    fn cloud_only_falls_back_to_id_when_code_is_missing() {
+        let mut cfg = AppConfig::default();
+        cfg.sync_folders.push(folder("cs-F1-k1", ""));
+        let st = state_with(&[("cs-F1-k1", "Müzik")]);
+        assert!(cloud_only(&cfg, &st).is_empty());
+    }
+
+    #[test]
+    fn every_tr_property_is_filled_from_an_existing_locale_key() {
+        // Slint'te `Tr.*` property'sinin setter'ı `apply_language`'de unutulursa metin sessizce
+        // boş kalır; anahtar locale'de yoksa da ekranda ham anahtar görünür.
+        let slint = include_str!("../ui/main.slint");
+        let tr_block = slint
+            .split("export global Tr {")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .expect("Tr global'i bulunamadı");
+        let props: Vec<&str> = tr_block
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("in property <string> "))
+            .map(|r| r.split([';', ':']).next().unwrap().trim())
+            .collect();
+        assert!(props.len() > 40, "Tr property'leri ayrıştırılamadı: {}", props.len());
+
+        let source = include_str!("main.rs");
+        for prop in props {
+            let needle = format!("set_{prop} => \"");
+            let key = source
+                .split(&needle)
+                .nth(1)
+                .and_then(|r| r.split('"').next())
+                .unwrap_or_else(|| panic!("Tr.{prop} için apply_language'de setter yok"));
+            assert_ne!(i18n::t(key), key, "Tr.{prop}: '{key}' anahtarı locale'de yok");
+        }
+    }
+
+    fn snapshot(phase: u8, total_files: u64) -> sync_core::progress::Snapshot {
+        sync_core::progress::Snapshot { phase, total_files, ..Default::default() }
+    }
+
+    #[test]
+    fn status_says_checking_while_diffing() {
+        use sync_core::progress::PHASE_PREPARE;
+        assert_eq!(phase_status_key(&snapshot(PHASE_PREPARE, 0)), Some("status_checking"));
+    }
+
+    #[test]
+    fn status_only_says_transfer_when_there_are_files_to_transfer() {
+        use sync_core::progress::{PHASE_PULL, PHASE_PUSH};
+        // Motor, aktarılacak dosya olmasa da begin(PULL/PUSH, 0, 0) çağırır: bu "indiriliyor" demek olmamalı.
+        assert_eq!(phase_status_key(&snapshot(PHASE_PULL, 0)), Some("status_checking"));
+        assert_eq!(phase_status_key(&snapshot(PHASE_PUSH, 0)), Some("status_checking"));
+        assert_eq!(phase_status_key(&snapshot(PHASE_PULL, 3)), Some("status_pulling"));
+        assert_eq!(phase_status_key(&snapshot(PHASE_PUSH, 3)), Some("status_uploading"));
+    }
+
+    #[test]
+    fn status_is_left_alone_when_idle() {
+        // Pull ile push arasındaki boşlukta (IDLE) metin değişmemeli.
+        assert_eq!(phase_status_key(&snapshot(sync_core::progress::PHASE_IDLE, 0)), None);
+    }
+
+    #[test]
+    fn final_message_counts_pulled_and_pushed_changes() {
+        assert_eq!(final_sync_message(0, 0, 0, 0), ("status_no_diff", None));
+        assert_eq!(final_sync_message(2, 0, 0, 0), ("status_files_updated", Some(2)));
+        assert_eq!(final_sync_message(0, 3, 1, 0), ("status_files_updated", Some(4)));
+        assert_eq!(final_sync_message(5, 0, 0, 0), ("status_files_updated", Some(5)));
+        // Hata her şeyin önüne geçer
+        assert_eq!(final_sync_message(5, 2, 0, 1), ("status_files_failed", Some(1)));
+    }
+
+    #[test]
+    fn scan_delay_is_the_interval_when_healthy() {
+        let interval = Duration::from_secs(300);
+        assert_eq!(next_scan_delay(interval, 0), interval);
+    }
+
+    #[test]
+    fn scan_delay_backs_off_but_never_exceeds_interval() {
+        let interval = Duration::from_secs(300);
+        let delays: Vec<_> = (1..=10).map(|n| next_scan_delay(interval, n)).collect();
+        assert_eq!(delays[0], Duration::from_secs(30));
+        assert_eq!(delays[1], Duration::from_secs(60));
+        assert!(delays.windows(2).all(|w| w[0] <= w[1]), "azalmamalı: {delays:?}");
+        assert!(delays.iter().all(|d| *d <= interval && *d > Duration::ZERO));
+        assert_eq!(*delays.last().unwrap(), interval);
+    }
+
+    #[test]
+    fn scan_delay_respects_short_intervals() {
+        // Aralık 30 sn'den kısaysa yeniden deneme aralığı aşmaz.
+        let interval = Duration::from_secs(10);
+        assert_eq!(next_scan_delay(interval, 1), interval);
+    }
+
+    #[test]
+    fn scan_delay_survives_u32_max_failures() {
+        let interval = Duration::from_secs(60);
+        assert_eq!(next_scan_delay(interval, u32::MAX), interval);
+    }
+
 }

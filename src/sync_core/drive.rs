@@ -17,11 +17,20 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use super::progress::Progress;
+
 const API: &str = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API: &str = "https://www.googleapis.com/upload/drive/v3";
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const BOUNDARY: &str = "connectsync_9f2b7c41d8e5a360";
 const MAX_RETRIES: u32 = 6;
+/// İnternet bağlantısı tamamen kopmuşken (timeout/connect hataları) çok daha sabırlı ol:
+/// ~kısa aralıklarla toplam birkaç dakika dener, sadece işlemi başarısız saymak yerine
+/// arayüzde "bağlantı bekleniyor" durumunu gösterir.
+const NET_MAX_RETRIES: u32 = 120;
+/// Drive klasörüne kullanıcının verdiği gerçek adı saklamak için appProperties anahtarı.
+/// (Drive'daki klasör adı "ConnectSync_<hex>" olarak kalır; görünen ad burada tutulur.)
+const NAME_PROP: &str = "cs_name";
 
 // ---------------------------------------------------------------------------
 // Hata tipi (Send + Sync, engine'deki `Box<dyn Error>`'a `?` ile dönüşür)
@@ -95,6 +104,21 @@ struct Created {
     id: String,
 }
 
+#[derive(Deserialize)]
+struct FolderList {
+    #[serde(default)]
+    files: Vec<FolderEntry>,
+}
+
+#[derive(Deserialize)]
+struct FolderEntry {
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(rename = "appProperties", default)]
+    app_properties: Option<HashMap<String, String>>,
+}
+
 // ---------------------------------------------------------------------------
 // İstemci
 // ---------------------------------------------------------------------------
@@ -106,6 +130,8 @@ pub struct DriveClient {
     refresh_lock: tokio::sync::Mutex<()>,
     /// Hedef klasördeki `dosya adı -> FileEntry` haritası
     index: Mutex<HashMap<String, FileEntry>>,
+    /// Arayüzün okuduğu ilerleme (MB/GB, dosya sayısı) ve ağ durumu (kopukluk/yeniden deneme).
+    pub progress: Arc<Progress>,
 }
 
 impl DriveClient {
@@ -121,6 +147,7 @@ impl DriveClient {
             provider,
             refresh_lock: tokio::sync::Mutex::new(()),
             index: Mutex::new(HashMap::new()),
+            progress: Arc::new(Progress::default()),
         })
     }
 
@@ -139,8 +166,14 @@ impl DriveClient {
             let result = build(&self.client).bearer_auth(&token).send().await;
 
             match result {
-                Ok(resp) if resp.status().is_success() => return Ok(resp),
+                Ok(resp) if resp.status().is_success() => {
+                    // Sunucudan cevap geldi: ağ çalışıyor, kopukluk uyarısını temizle.
+                    self.progress.set_net_retry(0);
+                    return Ok(resp);
+                }
                 Ok(resp) => {
+                    // Sunucu cevap verdiyse ağ bağlantısı vardır (401/429/5xx olsa da).
+                    self.progress.set_net_retry(0);
                     let status = resp.status();
                     let retry_after = parse_retry_after(&resp);
                     let body = resp.text().await.unwrap_or_default();
@@ -163,12 +196,16 @@ impl DriveClient {
                     });
                 }
                 Err(e) => {
+                    // Sunucuya hiç ulaşılamadı: muhtemelen internet kesildi. Kısa aralıklarla
+                    // uzun süre dene (NET_MAX_RETRIES) ve her denemede arayüze bildir.
                     let transient = e.is_timeout() || e.is_connect() || e.is_request();
-                    if transient && attempt < MAX_RETRIES {
-                        tokio::time::sleep(backoff(attempt)).await;
+                    if transient && attempt < NET_MAX_RETRIES {
+                        self.progress.set_net_retry(attempt + 1);
+                        tokio::time::sleep(backoff(attempt.min(5))).await;
                         attempt += 1;
                         continue;
                     }
+                    self.progress.set_net_retry(0);
                     return Err(e.into());
                 }
             }
@@ -196,20 +233,42 @@ impl DriveClient {
 
     // ----- klasör --------------------------------------------------------------
 
-    /// Klasör oluşturur veya varsa ID'sini döndürür.
+    /// Drive'daki ConnectSync klasörlerini (id, görünen ad) olarak döndürür.
+    /// Görünen ad, kullanıcının klasör oluştururken seçtiği gerçek isimdir
+    /// (appProperties'te saklanır); eski/adsız klasörlerde Drive adına geri düşülür.
     pub async fn list_cloud_folders(&self) -> Result<Vec<(String, String)>, DriveError> {
         let q = "name contains 'ConnectSync_' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
         let url = format!(
             "{API}/files?q={}&spaces=drive&pageSize=100&fields={}",
             urlencoding::encode(q),
-            urlencoding::encode("files(id,name)")
+            urlencoding::encode("files(id,name,appProperties)")
         );
-        let list: FileList = self.send(|c| c.get(&url)).await?.json().await?;
+        let list: FolderList = self.send(|c| c.get(&url)).await?.json().await?;
         let mut result = Vec::new();
         for f in list.files {
-            result.push((f.id, f.name));
+            let display = f
+                .app_properties
+                .as_ref()
+                .and_then(|p| p.get(NAME_PROP))
+                .filter(|s| !s.is_empty())
+                .cloned()
+                .unwrap_or(f.name);
+            result.push((f.id, display));
         }
         Ok(result)
+    }
+
+    /// Klasörün kullanıcı dostu adını Drive'a appProperties olarak yazar (yalnızca bu
+    /// uygulama görür, başka bir yerde görünmez). Klasör oluşturulduktan hemen sonra
+    /// bir kez çağrılması beklenir; var olan bir değerin üzerine de yazar.
+    pub async fn set_folder_display_name(&self, folder_id: &str, name: &str) -> Result<(), DriveError> {
+        let patch_url = format!(
+            "{API}/files/{}?fields=id",
+            urlencoding::encode(folder_id)
+        );
+        let body = json!({ "appProperties": { "cs_name": name } });
+        self.send(|c| c.patch(&patch_url).json(&body)).await?;
+        Ok(())
     }
 
     pub async fn get_or_create_folder(&self, 
@@ -301,7 +360,7 @@ impl DriveClient {
                 "name": "connectsync_keys.json",
                 "parents": ["appDataFolder"]
             });
-            let url = format!("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart");
+            let url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart".to_string();
             
             // For multipart we need a proper body, but we can also use simple upload + patch metadata, or multipart.
             // Let's just use multipart boundary manually since it's small.
@@ -321,6 +380,27 @@ impl DriveClient {
         }
         Ok(())
     }
+    /// Anahtar kaydından tek bir klasörün anahtarını siler.
+    pub async fn remove_sync_key(&self, folder_id: &str) -> Result<(), DriveError> {
+        let mut keys = self.get_sync_keys().await?;
+        if keys.remove(folder_id).is_none() {
+            return Ok(());
+        }
+        let q = "name = 'connectsync_keys.json' and 'appDataFolder' in parents and trashed = false";
+        let url = format!(
+            "{API}/files?q={}&spaces=appDataFolder&fields={}",
+            urlencoding::encode(q),
+            urlencoding::encode("files(id)")
+        );
+        let list: FileList = self.send(|c| c.get(&url)).await?.json().await?;
+        if let Some(f) = list.files.into_iter().next() {
+            let data = serde_json::to_vec(&keys).unwrap();
+            let url = format!("https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=media", f.id);
+            self.send(|c| c.patch(&url).body(data.clone())).await?;
+        }
+        Ok(())
+    }
+
     pub async fn refresh_index(&self, folder_id: &str) -> Result<usize, DriveError> {
         let q = format!("'{}' in parents and trashed = false", escape_q(folder_id));
         let fields = urlencoding::encode("nextPageToken,files(id,name,createdTime)").into_owned();
@@ -408,6 +488,7 @@ impl DriveClient {
                     .body(data.to_vec())
             })
             .await?;
+            self.progress.add_bytes(data.len() as u64);
             return Ok(id);
         }
 
@@ -448,6 +529,7 @@ impl DriveClient {
         if created.id.is_empty() {
             return Err(DriveError::Protocol("yükleme yanıtında id boş".into()));
         }
+        self.progress.add_bytes(data.len() as u64);
         Ok(created.id)
     }
 
@@ -457,22 +539,20 @@ impl DriveClient {
         let url = format!("{API}/files/{}?alt=media", urlencoding::encode(file_id));
         let mut attempts = 0;
         loop {
-            match self.send(|c| c.get(&url)).await {
-                Ok(resp) => {
-                    match resp.bytes().await {
-                        Ok(b) => return Ok(b.to_vec()),
-                        Err(e) if attempts < 3 => {
-                            eprintln!("Body okuma hatası, tekrar deneniyor ({attempts}/3): {e}");
-                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        }
-                        Err(e) => return Err(e.into()),
-                    }
+            // `send()` zaten bağlantı/timeout hatalarında uzun süre yeniden dener
+            // (internet kesilmesi dahil); burada yalnızca gövde okuma hatasını ele alıyoruz.
+            let resp = self.send(|c| c.get(&url)).await?;
+            match resp.bytes().await {
+                Ok(b) => {
+                    self.progress.add_bytes(b.len() as u64);
+                    return Ok(b.to_vec());
                 }
-                Err(e) if attempts < 3 => {
-                    eprintln!("İndirme başlatılamadı, tekrar deneniyor ({attempts}/3): {e}");
+                Err(e) if attempts < 5 => {
+                    eprintln!("Body okuma hatası, tekrar deneniyor ({attempts}/5): {e}");
+                    self.progress.set_net_retry(attempts + 1);
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
-                Err(e) => return Err(e),
+                Err(e) => return Err(e.into()),
             }
             attempts += 1;
         }

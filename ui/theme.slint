@@ -1,0 +1,71 @@
+// ConnectSync renk paleti — TÜM renkler burada.
+//
+// Arayüzde sabit renk (#rrggbb) yazma; `Theme.<token>` kullan. Yeni renk gerekirse buraya bir token
+// ekle ve koyu/açık değerini yan yana yaz. Tema `Theme.dark` ile seçilir (Ayarlar → "Koyu tema",
+// config.json'daki `theme` alanı). Değerleri değiştirince bütün arayüz canlı güncellenir.
+//
+// Koyu palet  = Catppuccin Mocha  (uygulamanın orijinal görünümü, değişmedi)
+// Açık palet  = Catppuccin Latte tabanlı; metin/vurgu tokenları beyaz zeminde okunacak şekilde
+//               koyulaştırıldı (özellikle `*_text` tokenları ve `text_faint`).
+
+export global Theme {
+    // true → koyu palet, false → açık palet. Rust, ayarlardan MainWindow.setting_dark_theme
+    // üzerinden doldurur.
+    in-out property <bool> dark: true;
+
+    // ── Zeminler ─────────────────────────────────────────────────────────────────────
+    //                                                  koyu       açık
+    out property <color> bg:              dark ? #1e1e2e : #eff1f5;   // pencere, kart, popup
+    out property <color> bg_deep:         dark ? #181825 : #e6e9ef;   // giriş kutusu, çekmece
+    out property <color> bg_raised:       dark ? #262637 : #e3e6ee;   // liste öğesi zemini
+
+    // ── Yüzey / çizgi ────────────────────────────────────────────────────────────────
+    out property <color> surface:         dark ? #313244 : #ccd0da;   // buton zemini, ayırıcı, çerçeve
+    out property <color> surface_strong:  dark ? #45475a : #bcc0cc;   // vurgulu çerçeve, kapalı anahtar
+    out property <color> border_strong:   dark ? #585b70 : #acb0be;   // ikincil buton çerçevesi
+    out property <color> surface_dim:     dark ? #31324480 : #ccd0da80; // devre dışı anahtar zemini
+
+    // ── Metin ────────────────────────────────────────────────────────────────────────
+    out property <color> text_strong:     dark ? white   : #232634;   // başlıklar
+    out property <color> text:            dark ? #cdd6f4 : #4c4f69;   // ana metin
+    out property <color> text_muted:      dark ? #a6adc8 : #5c5f77;   // ikincil metin
+    out property <color> text_dim:        dark ? #7f849c : #6c6f85;   // soluk metin
+    out property <color> text_faint:      dark ? #6c7086 : #7c7f93;   // ipucu / açıklama
+
+    // ── Vurgu (mavi) ─────────────────────────────────────────────────────────────────
+    out property <color> accent:          dark ? #89b4fa : #1e66f5;
+    out property <color> accent_hover:    dark ? #89dceb : #1657d6;   // açıkta koyulaşır (beyaz yazı okunsun)
+    out property <color> accent_pressed:  dark ? #74c7ec : #0f47b3;
+    out property <color> lavender:        dark ? #b4befe : #7287fd;   // yeşil düğmelerin hover'ı
+    out property <color> on_accent:       dark ? #11111b : #ffffff;   // vurgu/yeşil/kırmızı zemin üstündeki yazı
+
+    // ── Durum renkleri (zemin ve metin ayrı: açık zeminde pastel metin okunmaz) ───────
+    out property <color> ok:              dark ? #a6e3a1 : #40a02b;   // başarı — dolgu / simge
+    out property <color> ok_text:         dark ? #a6e3a1 : #2f7a1f;   // başarı — metin
+    out property <color> warn:            dark ? #f9e2af : #df8e1d;   // uyarı — dolgu / nokta
+    out property <color> warn_text:       dark ? #f9e2af : #9c5a00;   // uyarı — metin
+    out property <color> danger:          dark ? #f38ba8 : #d20f39;   // hata / sil
+    out property <color> danger_hover:    dark ? #eba0ac : #e64553;
+    out property <color> danger_soft:     dark ? #f38ba820 : #d20f3924; // hata çubuğu zemini
+
+    // ── Anahtar (Switch) ─────────────────────────────────────────────────────────────
+    // Topuz her iki temada beyaz: koyu topuz yeşil zeminde "göz" gibi duruyordu.
+    out property <color> switch_on:       dark ? #3fa860 : #40a02b;
+    out property <color> switch_off:      surface_strong;
+    out property <color> switch_knob:     #ffffff;
+    out property <color> switch_knob_off: text_faint;                 // devre dışıyken
+
+    // ── Katmanlar / gölge ────────────────────────────────────────────────────────────
+    out property <color> scrim:           dark ? #11111b99 : #4c4f6966; // popup arkası karartma
+    out property <color> scrim_strong:    dark ? #11111be6 : #dce0e8f2; // çıkış popup'ı arkası
+    out property <color> panel_glass:     dark ? #181825cc : #e6e9efcc; // yarı saydam çekmece
+    out property <color> shadow:          dark ? #00000080 : #4c4f6940;
+
+    // ── Logo plakası ─────────────────────────────────────────────────────────────────
+    // Logo beyaz/gümüş olduğu için açık zeminde kaybolur. Açık temada koyu bir plaka üstünde
+    // durur (logo bozulmaz); koyu temada plaka görünmez.
+    out property <brush> logo_plate: dark
+        ? @linear-gradient(135deg, #00000000 0%, #00000000 100%)
+        : @linear-gradient(135deg, #313244 0%, #1e1e2e 100%);
+    out property <color> logo_plate_border: dark ? #00000000 : #45475a;
+}

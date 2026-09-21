@@ -2,7 +2,7 @@ slint::slint! {
     export component Dummy inherits Window {}
 }
 fn main() {
-    let dummy = Dummy::new().unwrap();
+    let _dummy = Dummy::new().unwrap();
     // dummy.show().unwrap(); // Not shown
     
     // Slint will quit immediately if there are no visible windows!

@@ -1,5 +1,5 @@
 slint::include_modules!();
+#[allow(dead_code)]
 fn create_window() -> MainWindow {
-    let ui = MainWindow::new().unwrap();
-    ui
+    MainWindow::new().unwrap()
 }

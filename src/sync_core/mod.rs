@@ -5,3 +5,4 @@ pub mod engine;
 pub mod watcher;
 pub mod config;
 pub mod auth;
+pub mod progress;
