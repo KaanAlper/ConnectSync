@@ -271,6 +271,25 @@ impl DriveClient {
         Ok(())
     }
 
+    /// Klasör hâlâ Drive'da mı? 404 (kalıcı silinmiş) ya da çöp kutusunda ise `false`.
+    /// Ağ/yetki gibi başka hatalar `Err` döner: bunlar "silinmiş" SAYILMAZ, aksi halde geçici bir
+    /// kesinti kullanıcıya yanlışlıkla "verin silinmiş" dedirtirdi.
+    pub async fn folder_exists(&self, folder_id: &str) -> Result<bool, DriveError> {
+        let url = format!(
+            "{API}/files/{}?fields={}",
+            urlencoding::encode(folder_id),
+            urlencoding::encode("id,trashed")
+        );
+        match self.send(|c| c.get(&url)).await {
+            Ok(resp) => {
+                let meta: FolderMeta = resp.json().await?;
+                Ok(!meta.trashed)
+            }
+            Err(e) if is_not_found(&e) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     pub async fn get_or_create_folder(&self, 
         name: &str,
         parent_id: Option<&str>,
@@ -609,6 +628,17 @@ fn multipart_related(metadata_json: &str, data: &[u8]) -> Vec<u8> {
     body.extend_from_slice(data);
     body.extend_from_slice(tail.as_bytes());
     body
+}
+
+/// Drive "dosya yok" (404) mu? Silinmiş klasörü ağ hatasından ayırmak için.
+pub fn is_not_found(e: &DriveError) -> bool {
+    matches!(e, DriveError::Api { status: 404, .. })
+}
+
+#[derive(Deserialize)]
+struct FolderMeta {
+    #[serde(default)]
+    trashed: bool,
 }
 
 fn is_retryable(status: StatusCode, body: &str) -> bool {

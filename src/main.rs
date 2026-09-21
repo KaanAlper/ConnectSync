@@ -37,6 +37,7 @@ use std::cell::RefCell;
 slint::include_modules!();
 mod sync_core;
 mod i18n;
+mod drive_missing;
 mod update_ui;
 mod updater;
 
@@ -163,6 +164,7 @@ pub struct AppState {
     pub folder_states: std::collections::HashMap<String, FolderState>,
     /// Drive'da bulunan (kod, ad) listesi; bu PC'de olmayanlar "Drive'da" bölümünde gösterilir
     pub cloud_items: Vec<(String, String)>,
+    pub missing: drive_missing::MissingStore,
     /// Arka plan taraması `cloud_items`'ı değiştirdi; tray zamanlayıcısı arayüzü yenileyip
     /// bayrağı temizler (pencere yoksa bir sonraki `setup_ui` zaten güncel listeyi çeker).
     pub cloud_dirty: bool,
@@ -612,6 +614,21 @@ fn setup_ui(
             });
         }
     });
+
+    let ui_weak_missing = ui.as_weak();
+    let app_state_missing = app_state.clone();
+    ui.on_missing_reupload(move |id| {
+        drive_missing::reupload(ui_weak_missing.clone(), app_state_missing.clone(), id.to_string());
+    });
+
+    let ui_weak_missing_rm = ui.as_weak();
+    let app_state_missing_rm = app_state.clone();
+    ui.on_missing_remove(move |id| {
+        if let Some(ui) = ui_weak_missing_rm.upgrade() {
+            drive_missing::remove(&ui, &app_state_missing_rm, id.as_str());
+        }
+    });
+
 
     ui.on_remove_sync_folder(move |id| {
         remove_local_sync(&ui_remove, &app_state_remove, id.as_str());
@@ -1091,6 +1108,14 @@ async fn sync_loop_task(
 
     // Döngü her turda bir kere sync yapıp sonra bekler
     loop {
+        match engine.drive_client.folder_exists(&engine.drive_folder_id).await {
+            Ok(false) => {
+                drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
+                break;
+            }
+            _ => {} // Other network errors or success -> continue to pull
+        }
+
         // 1. Önce Pull (Drive -> Yerel). "İndiriliyor" denmez: önce farklar incelenir; metin,
         // motorun gerçek fazına göre kendiliğinden değişir (bkz. `with_phase_status`).
         update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_checking"), true);
@@ -1496,6 +1521,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             {
                 update_ui_folders(ui, &app_state_timer);
             }
+
+            if let Some(ui) = handle_for_timer.borrow().as_ref() {
+                drive_missing::sync_window(ui, &app_state_timer);
+            }
+
 
             // Güncelleme popup'u: durum değiştiyse ya da indirme sürüyorsa pencereye yansıt.
             if let Some(ui) = handle_for_timer.borrow().as_ref() {
