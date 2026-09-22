@@ -128,5 +128,15 @@
     "err_code_trashed": "Dieser Ordner liegt im Drive-Papierkorb. Stelle ihn aus dem Papierkorb wieder her, dann kannst du dich verbinden.",
     "drive_access_label": "Voller Drive-Zugriff (zum Teilen mit anderen)",
     "drive_access_hint": "Ausgeschaltet sind nur von ConnectSync selbst erstellte Ordner erreichbar; mit dem Sync-Code eines anderen Google-Kontos ist keine Verbindung möglich. Eingeschaltet kann die App auf dein gesamtes Drive zugreifen und verlangt eine erneute Anmeldung. Eine Google-Genehmigung kann erforderlich sein. Beim Ausschalten wird die Sitzung mit vollem Zugriff von diesem Computer entfernt.",
-    "err_delete_not_connectsync": "Das sieht nicht nach einem ConnectSync-Ordner aus; er wurde aus Sicherheitsgründen nicht aus Drive gelöscht."
+    "err_delete_not_connectsync": "Das sieht nicht nach einem ConnectSync-Ordner aus; er wurde aus Sicherheitsgründen nicht aus Drive gelöscht.",
+    "conflict_title": "Datei an zwei Stellen geändert",
+    "conflict_body": "{n} Datei(en) in '{name}' wurden auf diesem Computer und anderswo geändert. Nichts wurde automatisch überschrieben.",
+    "conflict_more": "+{n} weitere",
+    "conflict_take_remote": "Sichern und Cloud-Version übernehmen",
+    "conflict_keep_local": "Version auf diesem Computer behalten",
+    "conflict_later": "Später entscheiden",
+    "status_conflicts": "{n} Datei(en) warten auf eine Entscheidung",
+    "status_conflicts_resolved": "{n} Konflikt(e) gelöst",
+    "err_conflict_no_sync": "Diese Synchronisierung läuft gerade nicht; starte zuerst die Synchronisierung.",
+    "err_conflict_resolve": "Konflikt konnte nicht gelöst werden: {e}"
 }

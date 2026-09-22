@@ -128,5 +128,15 @@
     "err_code_trashed": "このフォルダーは Drive のゴミ箱にあります。ゴミ箱から復元すると接続できます。",
     "drive_access_label": "Drive への完全アクセス（他の人との共有用）",
     "drive_access_hint": "オフの間は ConnectSync 自身が作成したフォルダーにのみアクセスでき、別の Google アカウントの同期コードでは接続できません。オンにするとアプリは Drive 全体にアクセスでき、再ログインを求めます。Google の承認が必要になる場合があります。 オフにすると、完全アクセスのセッションはこのコンピューターから削除されます。",
-    "err_delete_not_connectsync": "ConnectSync のフォルダーではないようです。安全のため Drive から削除しませんでした。"
+    "err_delete_not_connectsync": "ConnectSync のフォルダーではないようです。安全のため Drive から削除しませんでした。",
+    "conflict_title": "2 か所でファイルが変更されました",
+    "conflict_body": "「{name}」の {n} 個のファイルが、このコンピューターと別の場所の両方で変更されました。自動的に上書きされたものはありません。",
+    "conflict_more": "ほか {n} 件",
+    "conflict_take_remote": "自分の分を退避してクラウド版を取得",
+    "conflict_keep_local": "このコンピューターの版を残す",
+    "conflict_later": "後で決める",
+    "status_conflicts": "{n} 個のファイルが判断待ち",
+    "status_conflicts_resolved": "{n} 件の競合を解決しました",
+    "err_conflict_no_sync": "この同期は現在動作していません。先に同期を開始してください。",
+    "err_conflict_resolve": "競合を解決できませんでした: {e}"
 }

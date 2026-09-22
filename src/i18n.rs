@@ -94,6 +94,7 @@ mod tests {
             ("main.rs", include_str!("main.rs")),
             ("update_ui.rs", include_str!("update_ui.rs")),
             ("drive_missing.rs", include_str!("drive_missing.rs")),
+            ("conflicts.rs", include_str!("conflicts.rs")),
         ];
         let fallback = &tables()[FALLBACK];
         let mut checked = 0;

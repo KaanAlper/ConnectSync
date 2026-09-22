@@ -128,5 +128,15 @@
     "err_code_trashed": "This folder is in Drive's trash. Restore it from the trash and you can connect.",
     "drive_access_label": "Full Drive access (to share with others)",
     "drive_access_hint": "When off, only folders ConnectSync created itself are reachable; you can't connect with another Google account's sync code. When on, the app can access your entire Drive and asks you to sign in again. Google approval may be required. Turning it off removes the full-access session from this computer.",
-    "err_delete_not_connectsync": "This doesn't look like a ConnectSync folder; it was not deleted from Drive for safety."
+    "err_delete_not_connectsync": "This doesn't look like a ConnectSync folder; it was not deleted from Drive for safety.",
+    "conflict_title": "File changed in two places",
+    "conflict_body": "{n} file(s) in '{name}' were changed both on this computer and elsewhere. Nothing was overwritten automatically.",
+    "conflict_more": "+{n} more",
+    "conflict_take_remote": "Back up mine, take the cloud copy",
+    "conflict_keep_local": "Keep the one on this computer",
+    "conflict_later": "Decide later",
+    "status_conflicts": "{n} file(s) waiting for a decision",
+    "status_conflicts_resolved": "{n} conflict(s) resolved",
+    "err_conflict_no_sync": "This sync is not running right now; start syncing first.",
+    "err_conflict_resolve": "Could not resolve the conflict: {e}"
 }

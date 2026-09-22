@@ -128,5 +128,15 @@
     "err_code_trashed": "此文件夹在 Drive 回收站中。从回收站还原后即可连接。",
     "drive_access_label": "完整 Drive 访问权限（用于与他人共享）",
     "drive_access_hint": "关闭时只能访问 ConnectSync 自己创建的文件夹，无法使用其他 Google 账号的同步代码连接。开启后应用可访问你的整个 Drive，并会要求重新登录。可能需要 Google 审核。 关闭后，此电脑上的完全访问会话将被删除。",
-    "err_delete_not_connectsync": "这看起来不是 ConnectSync 文件夹；出于安全考虑，未从 Drive 中删除。"
+    "err_delete_not_connectsync": "这看起来不是 ConnectSync 文件夹；出于安全考虑，未从 Drive 中删除。",
+    "conflict_title": "文件在两处都被修改",
+    "conflict_body": "“{name}”中有 {n} 个文件在此电脑和其他位置都被修改。没有任何文件被自动覆盖。",
+    "conflict_more": "另有 {n} 个",
+    "conflict_take_remote": "备份本地并使用云端版本",
+    "conflict_keep_local": "保留此电脑上的版本",
+    "conflict_later": "稍后决定",
+    "status_conflicts": "{n} 个文件等待处理",
+    "status_conflicts_resolved": "已解决 {n} 个冲突",
+    "err_conflict_no_sync": "此同步当前未运行；请先开始同步。",
+    "err_conflict_resolve": "无法解决冲突：{e}"
 }

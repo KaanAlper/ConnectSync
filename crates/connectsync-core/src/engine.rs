@@ -22,6 +22,7 @@ use super::crypto::{decrypt_chunk, encrypt_chunk, hash_chunk_name, Keys};
 use super::drive::DriveClient;
 use super::manifest::{FileInfo, Manifest};
 use super::progress::{self, PhaseGuard};
+use crate::sync_state::{decide_pull, unique_backup_path, FileStat, PullDecision, SyncState, STATE_FILE};
 use fastcdc::v2020::StreamCDC;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::OsStr;
@@ -75,10 +76,22 @@ const MASS_DELETE_MIN: usize = 20;
 // Rapor / seçenek tipleri
 // ---------------------------------------------------------------------------
 
+/// Kullanıcının bir çakışma için seçimi.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictChoice {
+    /// Uzak sürümü al. `backup`: yerel sürümü önce yedekle.
+    TakeRemote { backup: bool },
+    /// Yerel sürümü koru (bir sonraki push'ta uzağın yerine yüklenir).
+    KeepLocal,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct PushOptions {
     /// Boş klasör veya toplu silme koruması devre dışı bırakılır.
     pub allow_mass_delete: bool,
+    /// Bu turda YÜKLENMEYECEK yollar: çözülmemiş çakışmalar. Yerel de uzak da değişmişken yerel sürümü
+    /// yüklemek uzak değişikliği manifestten silerdi; kullanıcı karar verene kadar iki taraf da bırakılır.
+    pub skip_paths: HashSet<String>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -115,6 +128,10 @@ pub struct PullReport {
     pub invalid_paths: Vec<String>,
     pub failed_files: Vec<(String, String)>,
     pub bytes_written: u64,
+    /// Yerel de uzak da değişmiş (ya da taban bilinmiyor): dokunulmadı, kullanıcıya sorulmalı.
+    pub conflicts: Vec<String>,
+    /// Yalnızca yerelde değişmiş: uzak sürüm ezmedi, push yükleyecek.
+    pub kept_local: usize,
 }
 
 impl PullReport {
@@ -136,6 +153,8 @@ pub struct SyncEngine {
     pub local_revision: tokio::sync::Mutex<u64>,
     sync_lock: tokio::sync::Mutex<()>,
     concurrency: Concurrency,
+    /// Bu cihazdaki dosyaların son başarılı eşitlemedeki durumu (bkz. `sync_state`).
+    state: Mutex<SyncState>,
 }
 
 impl SyncEngine {
@@ -164,6 +183,7 @@ impl SyncEngine {
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
 
+        let state = SyncState::load(&local_folder_path);
         Self {
             drive_client,
             keys: Arc::new(keys),
@@ -172,6 +192,16 @@ impl SyncEngine {
             sync_lock: tokio::sync::Mutex::new(()),
             local_revision: tokio::sync::Mutex::new(saved_revision),
             concurrency: Concurrency::from_threads(DEFAULT_THREADS),
+            state: Mutex::new(state),
+        }
+    }
+
+    /// Son eşitlenen durumu diske yazar. Başarısız olursa eşitleme sürer ama bir sonraki turda taban eksik
+    /// kalabilir (farklı dosyalar çakışma olarak sorulur, ezilmez): bu yüzden hata sessizce yutulmaz.
+    fn save_state(&self) {
+        let snapshot = self.state.lock().unwrap().clone();
+        if let Err(e) = snapshot.save(&self.local_folder_path) {
+            eprintln!("Eşitleme durumu kaydedilemedi ({STATE_FILE}): {e}");
         }
     }
 
@@ -243,10 +273,19 @@ impl SyncEngine {
         // --- iş listesi ---
         let mut work: Vec<LocalFile> = Vec::new();
         for lf in scan.files {
+            // Çözülmemiş çakışma: yerel sürümü yükleme (uzak değişikliği manifestten silerdi)
+            if opts.skip_paths.contains(&lf.rel_path) {
+                continue;
+            }
             match manifest.files.get(&lf.rel_path) {
                 Some(ex) if ex.size == lf.size && ex.modified_at == lf.modified_ms => {
                     if ex.chunks.iter().all(|c| self.drive_client.has(&hex::encode(c))) {
                         report.unchanged_files += 1;
+                        // Yerel = uzak: bu, o dosya için güvenilir bir "son eşitlenen durum"dur
+                        self.state.lock().unwrap().set(
+                            &lf.rel_path,
+                            FileStat { size: lf.size, modified_ms: lf.modified_ms },
+                        );
                     } else {
                         println!("Drive'da eksik chunk var, yeniden yüklenecek: {}", lf.rel_path);
                         report.repaired_files += 1;
@@ -260,6 +299,7 @@ impl SyncEngine {
         let mut unsaved: usize = 0; // manifest'e henüz yazılmamış değişiklik sayısı
         for p in &removed {
             manifest.files.remove(p);
+            self.state.lock().unwrap().remove(p);
         }
         if !removed.is_empty() {
             report.removed_from_manifest = removed.len();
@@ -310,6 +350,10 @@ impl SyncEngine {
             match joined {
                 Ok((rel, Ok(FileOutcome::Synced(info)))) => {
                     println!("[{done}/{total_work}] Tamamlandı: {rel}");
+                    self.state
+                        .lock()
+                        .unwrap()
+                        .set(&rel, FileStat { size: info.size, modified_ms: info.modified_at });
                     manifest.files.insert(rel, info);
                     report.uploaded_files += 1;
                     unsaved += 1;
@@ -356,6 +400,7 @@ impl SyncEngine {
             println!("Manifest'te değişiklik yok, yüklenmedi.");
         }
 
+        self.save_state();
         report.manifest_revision = manifest.revision as u32;
         report.chunks_uploaded = ctx.chunks_uploaded.load(Ordering::Relaxed);
         report.chunks_deduped = ctx.chunks_deduped.load(Ordering::Relaxed);
@@ -400,26 +445,32 @@ impl SyncEngine {
                 continue;
             };
 
-            match tokio::fs::metadata(&dest).await {
-                Ok(md) if md.is_file() => {
-                    if md.len() == info.size && mtime_ms(&md) == info.modified_at {
-                        report.skipped_up_to_date += 1;
-                        continue;
-                    }
-                    if !overwrite {
-                        report.skipped_existing.push(rel.clone());
-                        continue;
-                    }
-                }
+            let remote = FileStat { size: info.size, modified_ms: info.modified_at };
+            let local = match tokio::fs::metadata(&dest).await {
+                Ok(md) if md.is_file() => Some(FileStat { size: md.len(), modified_ms: mtime_ms(&md) }),
                 Ok(_) => {
                     report
                         .failed_files
                         .push((rel.clone(), "hedef yol bir dosya değil".into()));
                     continue;
                 }
-                Err(_) => {}
+                Err(_) => None,
+            };
+            // Üç yönlü karar: yerel dosya son eşitlemeden beri DEĞİŞMİŞSE asla sessizce ezilmez.
+            let base = self.state.lock().unwrap().get(rel);
+            match decide_pull(local, base, remote, overwrite) {
+                PullDecision::UpToDate => {
+                    report.skipped_up_to_date += 1;
+                    self.state.lock().unwrap().set(rel, remote);
+                }
+                PullDecision::KeepLocal if !overwrite => report.skipped_existing.push(rel.clone()),
+                PullDecision::KeepLocal => report.kept_local += 1,
+                PullDecision::Conflict => {
+                    println!("Çakışma (yerel ve uzak değişmiş), dokunulmadı: {rel}");
+                    report.conflicts.push(rel.clone());
+                }
+                PullDecision::Restore => jobs.push((rel.clone(), info.clone(), dest)),
             }
-            jobs.push((rel.clone(), info.clone(), dest));
         }
 
         let ctx = Arc::new(PullCtx {
@@ -427,6 +478,10 @@ impl SyncEngine {
             keys: self.keys.clone(),
         });
 
+        let restored_stats: HashMap<String, FileStat> = jobs
+            .iter()
+            .map(|(rel, info, _)| (rel.clone(), FileStat { size: info.size, modified_ms: info.modified_at }))
+            .collect();
         let total_pull_bytes: u64 = jobs.iter().map(|(_, info, _)| info.size).sum();
         self.drive_client
             .progress
@@ -455,6 +510,9 @@ impl SyncEngine {
             match joined {
                 Ok((rel, Ok(bytes))) => {
                     println!("[{done}/{total}] Geri yüklendi: {rel}");
+                    if let Some(stat) = restored_stats.get(&rel) {
+                        self.state.lock().unwrap().set(&rel, *stat);
+                    }
                     report.restored_files += 1;
                     report.bytes_written += bytes;
                     self.drive_client.progress.file_done();
@@ -479,7 +537,60 @@ impl SyncEngine {
             report.skipped_existing.len(),
             report.failed_files.len()
         );
+        if !report.conflicts.is_empty() || report.kept_local > 0 {
+            println!(
+                "Yerel değişiklik korundu: {} dosya push'ta yüklenecek, {} çakışma karar bekliyor.",
+                report.kept_local,
+                report.conflicts.len()
+            );
+        }
+        self.save_state();
         Ok(report)
+    }
+
+    /// Bir çakışmayı kullanıcının seçimine göre çözer. Çalışan bir eşitlemeyle yarışmamak için `sync_lock`
+    /// alınır. Döner: alınan yedeğin yolu (varsa).
+    ///
+    /// - `TakeRemote { backup: true }`: yerel dosya `… (yerel yedek …)` adıyla KORUNUR, sonra uzak sürüm
+    ///   yazılır. Yedek normal bir dosya olarak bir sonraki push'ta diğer bilgisayarlara da gider.
+    /// - `TakeRemote { backup: false }`: yerel sürüm atılır (kullanıcı bilerek seçer).
+    /// - `KeepLocal`: uzak sürüm taban kabul edilir; yerel dosya artık "yalnızca yerelde değişmiş" sayılır ve
+    ///   bir sonraki push'ta uzağın yerine yüklenir.
+    pub async fn resolve_conflict(&self, rel: &str, choice: ConflictChoice) -> Res<Option<PathBuf>> {
+        let _guard = self.sync_lock.lock().await;
+        let manifest = self.load_manifest().await?;
+        let info = manifest
+            .files
+            .get(rel)
+            .ok_or("dosya artık uzak manifestte yok")?
+            .clone();
+        let dest = safe_join(&self.local_folder_path, rel).ok_or("güvensiz yol")?;
+        let remote = FileStat { size: info.size, modified_ms: info.modified_at };
+
+        let backup = match choice {
+            ConflictChoice::KeepLocal => None,
+            ConflictChoice::TakeRemote { backup } => {
+                let mut moved_to = None;
+                if backup && dest.is_file() {
+                    let stamp = chrono::Local::now().format("%Y-%m-%d %H-%M-%S").to_string();
+                    let target = unique_backup_path(&dest, &stamp);
+                    fs::rename(&dest, &target).map_err(|e| format!("yedek alınamadı: {e}"))?;
+                    moved_to = Some(target);
+                }
+                let ctx = Arc::new(PullCtx { client: self.drive_client.clone(), keys: self.keys.clone() });
+                if let Err(e) = restore_one_file(ctx, info, dest.clone()).await {
+                    // Yerel dosya yerinde kalsın: yedeği geri taşı
+                    if let Some(bak) = &moved_to {
+                        let _ = fs::rename(bak, &dest);
+                    }
+                    return Err(format!("uzak sürüm yazılamadı: {e}").into());
+                }
+                moved_to
+            }
+        };
+        self.state.lock().unwrap().set(rel, remote);
+        self.save_state();
+        Ok(backup)
     }
 
     // ----- manifest --------------------------------------------------------
@@ -989,7 +1100,7 @@ fn scan_local(root: &Path) -> Result<ScanResult, String> {
         }
         // Dahili ConnectSync meta dosyaları — sync dışı
         let fname = entry.file_name();
-        if fname == ".connectsync-revision" {
+        if fname == ".connectsync-revision" || fname == STATE_FILE {
             continue;
         }
 
@@ -1091,6 +1202,26 @@ fn tmp_path(dest: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn internal_metadata_files_are_never_synced() {
+        // Durum dosyası yüklenirse her cihazın "son eşitlenen durumu" birbirine karışırdı.
+        let dir = std::env::temp_dir().join(format!("connectsync-scan-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for name in ["a.txt", ".connectsync-revision", STATE_FILE, ".connectsync-state.json.connectsync-part"] {
+            fs::write(dir.join(name), b"x").unwrap();
+        }
+        let scan = scan_local(&dir).unwrap();
+        let names: Vec<_> = scan.files.iter().map(|f| f.rel_path.as_str()).collect();
+        assert_eq!(names, vec!["a.txt"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn push_skips_nothing_by_default() {
+        assert!(PushOptions::default().skip_paths.is_empty());
+    }
 
     #[test]
     fn concurrency_default_matches_previous_constants() {

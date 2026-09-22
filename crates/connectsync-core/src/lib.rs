@@ -13,6 +13,7 @@
 //! - [`progress`]: motorun yazdığı, arayüzün okuduğu kilitsiz ilerleme sayaçları.
 //! - [`limits`]: eşzamanlı aktarım ayarı sınırları.
 //! - [`scopes`]: Google Drive yetki (OAuth kapsamı) profilleri.
+//! - [`sync_state`]: cihaz başına son eşitlenen durum ve üç yönlü pull kararı (veri kaybı koruması).
 
 pub mod crypto;
 pub mod drive;
@@ -21,3 +22,4 @@ pub mod limits;
 pub mod manifest;
 pub mod progress;
 pub mod scopes;
+pub mod sync_state;

@@ -128,5 +128,15 @@
     "err_code_trashed": "Esta carpeta está en la papelera de Drive. Restáurala desde la papelera y podrás conectarte.",
     "drive_access_label": "Acceso completo a Drive (para compartir con otros)",
     "drive_access_hint": "Desactivado, solo se accede a las carpetas que ConnectSync creó; no puedes conectarte con el código de otra cuenta de Google. Activado, la app puede acceder a todo tu Drive y te pedirá iniciar sesión de nuevo. Puede requerirse aprobación de Google. Al desactivarlo, la sesión de acceso completo se elimina de este equipo.",
-    "err_delete_not_connectsync": "Esto no parece una carpeta de ConnectSync; por seguridad no se eliminó de Drive."
+    "err_delete_not_connectsync": "Esto no parece una carpeta de ConnectSync; por seguridad no se eliminó de Drive.",
+    "conflict_title": "Archivo cambiado en dos lugares",
+    "conflict_body": "{n} archivo(s) de '{name}' se cambiaron en este equipo y en otro lugar. No se sobrescribió nada automáticamente.",
+    "conflict_more": "+{n} más",
+    "conflict_take_remote": "Hacer copia y usar la de la nube",
+    "conflict_keep_local": "Conservar la de este equipo",
+    "conflict_later": "Decidir más tarde",
+    "status_conflicts": "{n} archivo(s) esperan una decisión",
+    "status_conflicts_resolved": "{n} conflicto(s) resuelto(s)",
+    "err_conflict_no_sync": "Esta sincronización no está en marcha; inicia la sincronización primero.",
+    "err_conflict_resolve": "No se pudo resolver el conflicto: {e}"
 }

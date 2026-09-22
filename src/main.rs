@@ -37,6 +37,7 @@ use std::cell::RefCell;
 slint::include_modules!();
 mod sync_core;
 mod i18n;
+mod conflicts;
 mod drive_missing;
 mod sync_ctl;
 mod update_ui;
@@ -85,6 +86,8 @@ fn stop_all_syncs(app_state: &Arc<Mutex<AppState>>) {
         let _ = tx.send(());
     }
     state.cloud_items.clear();
+    state.engines.clear();
+    state.conflicts = conflicts::ConflictStore::default();
 }
 
 /// Arayüzü giriş ekranına döndürür (belirteçlere dokunmaz). Açık ekranlar ve popup'lar kapatılır:
@@ -99,6 +102,7 @@ fn reset_ui_to_login(ui_weak: &slint::Weak<MainWindow>, app_state: &Arc<Mutex<Ap
         ui.set_show_edit_dialog(false);
         ui.set_show_delete_dialog(false);
         ui.set_show_missing_dialog(false);
+        ui.set_show_conflict_dialog(false);
         ui.set_is_logged_in(false);
         ui.set_active_sync_code("".into());
         ui.set_active_hidden(false);
@@ -127,6 +131,10 @@ fn apply_language(ui: &MainWindow, lang: &str) {
         set_missing_title => "missing_title",
         set_missing_upload => "missing_upload",
         set_missing_remove => "missing_remove",
+        set_conflict_title => "conflict_title",
+        set_conflict_take_remote => "conflict_take_remote",
+        set_conflict_keep_local => "conflict_keep_local",
+        set_conflict_later => "conflict_later",
         set_edit_sync_title => "edit_sync_title",
         set_edit_name => "edit_name",
         set_new_drive_folder_name => "new_drive_folder_name",
@@ -229,6 +237,10 @@ pub struct AppState {
     /// Drive'da bulunan (kod, ad) listesi; bu PC'de olmayanlar "Drive'da" bölümünde gösterilir
     pub cloud_items: Vec<(String, String)>,
     pub missing: drive_missing::MissingStore,
+    /// Çalışan sync döngülerinin motorları: çakışma popup'ındaki seçim bunlara iletilir.
+    pub engines: std::collections::HashMap<String, Arc<sync_core::engine::SyncEngine>>,
+    /// Hem yerelde hem uzakta değişmiş dosyalar (kullanıcıya sorulur): bkz. `conflicts`.
+    pub conflicts: conflicts::ConflictStore,
     /// Hangi sync döngüsü güncel / duraklatılmış (bkz. `sync_ctl`).
     pub ctl: sync_ctl::SyncControl,
     /// Arka plan taraması `cloud_items`'ı değiştirdi; tray zamanlayıcısı arayüzü yenileyip
@@ -312,6 +324,8 @@ fn remove_local_sync(
             let _ = tx.send(());
         }
         st.triggers.remove(id);
+        st.engines.remove(id);
+        st.conflicts.resolved(id);
         st.folder_states.remove(id);
         st.ctl.forget(id);
     }
@@ -685,6 +699,33 @@ fn setup_ui(
 
     let ui_weak_missing_up = ui.as_weak();
     let app_state_missing_up = app_state.clone();
+    let ui_weak_conflict = ui.as_weak();
+    let app_state_conflict = app_state.clone();
+    ui.on_conflict_take_remote(move |id| {
+        conflicts::resolve(
+            ui_weak_conflict.clone(),
+            app_state_conflict.clone(),
+            id.to_string(),
+            sync_core::engine::ConflictChoice::TakeRemote { backup: true },
+        );
+    });
+
+    let ui_weak_conflict_keep = ui.as_weak();
+    let app_state_conflict_keep = app_state.clone();
+    ui.on_conflict_keep_local(move |id| {
+        conflicts::resolve(
+            ui_weak_conflict_keep.clone(),
+            app_state_conflict_keep.clone(),
+            id.to_string(),
+            sync_core::engine::ConflictChoice::KeepLocal,
+        );
+    });
+
+    let app_state_conflict_later = app_state.clone();
+    ui.on_conflict_later(move |id| {
+        conflicts::defer(&app_state_conflict_later, id.as_str());
+    });
+
     ui.on_missing_upload(move |id| {
         drive_missing::reupload(
             ui_weak_missing_up.clone(),
@@ -1293,6 +1334,8 @@ async fn sync_loop_task(
             .with_threads(config.concurrent_threads),
     );
 
+    app_state_loop.lock().unwrap().engines.insert(sync_code.clone(), engine.clone());
+
     // Watcher başlat (ayarlardan kapatılabilir: yalnızca periyodik taramayla yetin)
     let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::channel::<String>(64);
     let _debouncer = if config.watch_local_changes {
@@ -1325,6 +1368,8 @@ async fn sync_loop_task(
         // motorun gerçek fazına göre kendiliğinden değişir (bkz. `with_phase_status`).
         update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_checking"), true);
         let mut pulled = 0usize;
+        // Bu turda YÜKLENMEYECEK dosyalar (çözülmemiş çakışmalar).
+        let skip_paths: std::collections::HashSet<String>;
         tokio::select! {
             _ = &mut stop_rx => {
                 report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
@@ -1338,8 +1383,17 @@ async fn sync_loop_task(
                 &sync_code,
             ) => {
                 match res {
-                    Ok(report) => pulled = report.restored_files,
-                    Err(e) => update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("err_pull", &[("e", &e.to_string())]), false),
+                    Ok(report) => {
+                        pulled = report.restored_files;
+                        skip_paths = report.conflicts.iter().cloned().collect();
+                        conflicts::report(&app_state_loop, &sync_code, report.conflicts);
+                    }
+                    Err(e) => {
+                        // Pull başarısız: çakışmaların güncel hali bilinmiyor. Bilinenleri yüklemeden
+                        // bırak ki push uzaktaki değişikliğin üstüne yazmasın.
+                        skip_paths = app_state_loop.lock().unwrap().conflicts.files(&sync_code).into_iter().collect();
+                        update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("err_pull", &[("e", &e.to_string())]), false);
+                    }
                 }
             }
         }
@@ -1350,7 +1404,7 @@ async fn sync_loop_task(
                 report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
                 break;
             }
-            _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code, pulled) => {}
+            _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code, pulled, skip_paths) => {}
         }
 
         tokio::select! {
@@ -1392,9 +1446,14 @@ fn final_sync_message(
     uploaded: usize,
     removed: usize,
     failed: usize,
+    conflicts: usize,
 ) -> (&'static str, Option<usize>) {
     if failed > 0 {
         return ("status_files_failed", Some(failed));
+    }
+    // Karar bekleyen dosya varsa "fark yok" demek yanlış olur
+    if conflicts > 0 {
+        return ("status_conflicts", Some(conflicts));
     }
     let changed = pulled + uploaded + removed;
     if changed > 0 {
@@ -1438,10 +1497,15 @@ async fn run_push(
     app_state: &Arc<Mutex<AppState>>,
     sync_code: &str,
     pulled: usize,
+    skip_paths: std::collections::HashSet<String>,
 ) {
+    let waiting = skip_paths.len();
     update_status(ui_weak, app_state, sync_code, &i18n::t("status_checking"), true);
     let result = with_phase_status(
-        engine.run_sync_push(),
+        engine.run_sync_push_with(sync_core::engine::PushOptions {
+            skip_paths,
+            ..Default::default()
+        }),
         &engine.drive_client.progress,
         ui_weak,
         app_state,
@@ -1456,6 +1520,7 @@ async fn run_push(
                 report.uploaded_files,
                 report.removed_from_manifest,
                 report.failed_files.len(),
+                waiting,
             );
             let msg = match n {
                 Some(n) => i18n::tf(key, &[("n", &n.to_string())]),
@@ -1704,6 +1769,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     }
             }
 
+            // Çakışma sorusu: uygulama tepside olsa bile pencere öne gelir. Kullanıcı görmeden hiçbir
+            // dosya ezilmez (motor zaten dokunmaz), ama karar verebilsin diye haber verilir.
+            if conflicts::needs_attention(&app_state_timer) {
+                should_show = true;
+            }
+
             if should_show {
                 let mut handle = handle_for_timer.borrow_mut();
                 if handle.is_none() {
@@ -1729,6 +1800,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             if let Some(ui) = handle_for_timer.borrow().as_ref() {
                 drive_missing::sync_window(ui, &app_state_timer);
+                conflicts::sync_window(ui, &app_state_timer);
             }
 
 
@@ -2050,12 +2122,20 @@ mod tests {
 
     #[test]
     fn final_message_counts_pulled_and_pushed_changes() {
-        assert_eq!(final_sync_message(0, 0, 0, 0), ("status_no_diff", None));
-        assert_eq!(final_sync_message(2, 0, 0, 0), ("status_files_updated", Some(2)));
-        assert_eq!(final_sync_message(0, 3, 1, 0), ("status_files_updated", Some(4)));
-        assert_eq!(final_sync_message(5, 0, 0, 0), ("status_files_updated", Some(5)));
+        assert_eq!(final_sync_message(0, 0, 0, 0, 0), ("status_no_diff", None));
+        assert_eq!(final_sync_message(2, 0, 0, 0, 0), ("status_files_updated", Some(2)));
+        assert_eq!(final_sync_message(0, 3, 1, 0, 0), ("status_files_updated", Some(4)));
+        assert_eq!(final_sync_message(5, 0, 0, 0, 0), ("status_files_updated", Some(5)));
         // Hata her şeyin önüne geçer
-        assert_eq!(final_sync_message(5, 2, 0, 1), ("status_files_failed", Some(1)));
+        assert_eq!(final_sync_message(5, 2, 0, 1, 0), ("status_files_failed", Some(1)));
+    }
+
+    #[test]
+    fn final_message_reports_files_waiting_for_a_decision() {
+        // Karar bekleyen dosya varken "fark yok" denmemeli, ama hata yine önde
+        assert_eq!(final_sync_message(0, 0, 0, 0, 2), ("status_conflicts", Some(2)));
+        assert_eq!(final_sync_message(3, 1, 0, 0, 2), ("status_conflicts", Some(2)));
+        assert_eq!(final_sync_message(0, 0, 0, 1, 2), ("status_files_failed", Some(1)));
     }
 
     #[test]

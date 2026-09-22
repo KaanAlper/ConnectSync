@@ -128,5 +128,15 @@
     "err_code_trashed": "Bu klasör Drive'ın çöp kutusunda. Çöp kutusundan geri yüklersen bağlanabilirsin.",
     "drive_access_label": "Başkalarıyla paylaşım için tüm Drive erişimi",
     "drive_access_hint": "Kapalıyken yalnızca ConnectSync'in kendi oluşturduğu klasörlere erişilir; başka bir Google hesabının sync koduyla bağlanılamaz. Açınca uygulama Drive'ının tamamına erişebilir ve yeniden giriş yapmanı ister. Google'ın onayı gerekebilir. Kapatınca tam erişimli oturum bu bilgisayardan silinir.",
-    "err_delete_not_connectsync": "Bu klasör bir ConnectSync klasörü gibi görünmüyor; güvenlik için Drive'dan silinmedi."
+    "err_delete_not_connectsync": "Bu klasör bir ConnectSync klasörü gibi görünmüyor; güvenlik için Drive'dan silinmedi.",
+    "conflict_title": "Dosya iki yerde değişmiş",
+    "conflict_body": "'{name}' içinde {n} dosya hem bu bilgisayarda hem başka bir yerde değiştirilmiş. Hiçbiri otomatik ezilmedi.",
+    "conflict_more": "+{n} dosya daha",
+    "conflict_take_remote": "Yedekle ve buluttakini al",
+    "conflict_keep_local": "Bu bilgisayardakini koru",
+    "conflict_later": "Sonra karar ver",
+    "status_conflicts": "{n} dosya karar bekliyor",
+    "status_conflicts_resolved": "{n} dosyanın çakışması çözüldü",
+    "err_conflict_no_sync": "Bu sync şu an çalışmıyor; önce eşitlemeyi başlatın.",
+    "err_conflict_resolve": "Çakışma çözülemedi: {e}"
 }

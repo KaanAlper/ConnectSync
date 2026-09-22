@@ -128,5 +128,15 @@
     "err_code_trashed": "Ce dossier est dans la corbeille de Drive. Restaurez-le depuis la corbeille pour pouvoir vous connecter.",
     "drive_access_label": "Accès complet à Drive (pour partager avec d'autres)",
     "drive_access_hint": "Désactivé, seuls les dossiers créés par ConnectSync sont accessibles ; impossible de se connecter avec le code d'un autre compte Google. Activé, l'application peut accéder à tout votre Drive et vous demande de vous reconnecter. Une validation de Google peut être requise. En le désactivant, la session à accès complet est supprimée de cet ordinateur.",
-    "err_delete_not_connectsync": "Ceci ne ressemble pas à un dossier ConnectSync ; par sécurité, il n'a pas été supprimé de Drive."
+    "err_delete_not_connectsync": "Ceci ne ressemble pas à un dossier ConnectSync ; par sécurité, il n'a pas été supprimé de Drive.",
+    "conflict_title": "Fichier modifié à deux endroits",
+    "conflict_body": "{n} fichier(s) de « {name} » ont été modifiés sur cet ordinateur et ailleurs. Rien n'a été écrasé automatiquement.",
+    "conflict_more": "+{n} de plus",
+    "conflict_take_remote": "Sauvegarder le mien, prendre celui du cloud",
+    "conflict_keep_local": "Garder celui de cet ordinateur",
+    "conflict_later": "Décider plus tard",
+    "status_conflicts": "{n} fichier(s) en attente d'une décision",
+    "status_conflicts_resolved": "{n} conflit(s) résolu(s)",
+    "err_conflict_no_sync": "Cette synchronisation n'est pas active ; lancez d'abord la synchronisation.",
+    "err_conflict_resolve": "Impossible de résoudre le conflit : {e}"
 }

@@ -6,6 +6,10 @@ export global Tr {
     in property <string> missing_title;
     in property <string> missing_upload;
     in property <string> missing_remove;
+    in property <string> conflict_title;
+    in property <string> conflict_take_remote;
+    in property <string> conflict_keep_local;
+    in property <string> conflict_later;
 
     // Edit Sync
     in property <string> edit_sync_title;
@@ -372,6 +376,9 @@ export component MainWindow inherits Window {
     in-out property <bool> show_delete_dialog: false;
     in-out property <bool> show_missing_dialog: false;
     in-out property <string> missing_sync_id: "";
+    in-out property <bool> show_conflict_dialog: false;
+    in-out property <string> conflict_sync_id: "";
+    in-out property <string> conflict_body: "";
 
     in-out property <bool> show_edit_dialog: false;
     in-out property <bool> is_creating_new_sync: false;
@@ -417,6 +424,12 @@ export component MainWindow inherits Window {
     callback pause_sync_for_dialog(string);
     callback resume_sync_after_dialog(string);
     callback missing_upload(string);
+    /// Çakışma: yerel sürümü yedekle, buluttakini al
+    callback conflict_take_remote(string);
+    /// Çakışma: yerel sürümü koru (bir sonraki eşitlemede yüklenir)
+    callback conflict_keep_local(string);
+    /// Çakışma: şimdilik karar verme; hiçbir dosyaya dokunulmaz
+    callback conflict_later(string);
     // Kaydet callback'leri doğrulama sonucunu döndürür: false ise popup açık kalır (yazılanlar kaybolmaz).
     callback edit_sync_save(string, string, string, bool) -> bool;
     callback new_sync_save(string, string, bool) -> bool;
@@ -499,6 +512,8 @@ export component MainWindow inherits Window {
         if (root.show_quit_dialog) { root.show_quit_dialog = false; return true; }
         if (root.show_delete_dialog) { root.close_delete_dialog(); return true; }
         if (root.show_missing_dialog) { root.show_missing_dialog = false; return true; }
+        // Esc = "Sonra karar ver": dosyalar olduğu gibi kalır, veri kaybolmaz
+        if (root.show_conflict_dialog) { root.conflict_later(root.conflict_sync_id); root.show_conflict_dialog = false; return true; }
         if (root.error_text != "") { root.error_text = ""; return true; }
         if (root.show_edit_dialog) { root.show_edit_dialog = false; return true; }
         if (root.show_update_dialog) {
@@ -519,7 +534,7 @@ export component MainWindow inherits Window {
     /// Enter bu anda bir popup tarafından tüketilecek mi? (Ayarlardaki LineEdit'lerin
     /// kendi Enter'ı bozulmasın diye popup yokken tuş geçirilir.)
     pure function enter_is_captured() -> bool {
-        return root.show_quit_dialog || root.show_delete_dialog || root.show_update_dialog || root.show_missing_dialog || root.error_text != ""
+        return root.show_quit_dialog || root.show_delete_dialog || root.show_update_dialog || root.show_missing_dialog || root.show_conflict_dialog || root.error_text != ""
             || (root.is_logged_in && root.show_connect_dialog) || root.show_edit_dialog;
     }
 
@@ -527,6 +542,8 @@ export component MainWindow inherits Window {
     function handle_enter() {
         if (root.error_text != "") { root.error_text = ""; return; }
         if (root.show_missing_dialog) { root.missing_upload(root.missing_sync_id); root.show_missing_dialog = false; return; }
+        // Enter = güvenli seçenek: yerel sürüm yedeklenir, sonra buluttaki alınır
+        if (root.show_conflict_dialog) { root.conflict_take_remote(root.conflict_sync_id); root.show_conflict_dialog = false; return; }
         if (root.show_edit_dialog) { return; } // Enter doesn't auto-save, but shouldn't trigger background list
         if (root.show_quit_dialog) { root.fully_quit_requested(); return; }
         if (root.show_delete_dialog) {
@@ -2154,6 +2171,65 @@ export component MainWindow inherits Window {
                             clicked => { 
                                 root.missing_remove(root.missing_sync_id); 
                                 root.show_missing_dialog = false; 
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Conflict Modal Dialog ─────────────────────────
+        // Hem burada hem başka bir bilgisayarda değişmiş dosyalar: hiçbiri sessizce ezilmez.
+        if show_conflict_dialog: TouchArea {
+            width: 100%;
+            height: 100%;
+            scroll-event(event) => { return accept; }
+
+            Rectangle {
+                width: 100%; height: 100%; background: Theme.scrim_strong;
+                opacity: root.show_conflict_dialog ? 1.0 : 0.0;
+                animate opacity { duration: 200ms; easing: ease-out; }
+            }
+
+            Rectangle {
+                width: 380px;
+                height: conflict_content.preferred-height;
+                background: Theme.bg;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.surface;
+                drop-shadow-blur: 15px;
+                drop-shadow-color: Theme.shadow;
+
+                conflict_content := VerticalLayout {
+                    padding: 24px;
+                    spacing: 16px;
+                    alignment: center;
+
+                    Text { text: Tr.conflict_title; font-size: 1.2rem; font-weight: 700; color: Theme.text; horizontal-alignment: center; wrap: word-wrap; }
+                    Text { text: root.conflict_body; font-size: 0.9rem; color: Theme.text_muted; horizontal-alignment: center; wrap: word-wrap; }
+
+                    VerticalLayout {
+                        spacing: 10px;
+                        ModernButton {
+                            text: Tr.conflict_take_remote;
+                            clicked => {
+                                root.conflict_take_remote(root.conflict_sync_id);
+                                root.show_conflict_dialog = false;
+                            }
+                        }
+                        DarkButton {
+                            text: Tr.conflict_keep_local;
+                            clicked => {
+                                root.conflict_keep_local(root.conflict_sync_id);
+                                root.show_conflict_dialog = false;
+                            }
+                        }
+                        DarkButton {
+                            text: Tr.conflict_later;
+                            clicked => {
+                                root.conflict_later(root.conflict_sync_id);
+                                root.show_conflict_dialog = false;
                             }
                         }
                     }
