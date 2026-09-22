@@ -169,8 +169,40 @@ kullanıcı kotası vardır). Video yalnızca uygulamayı **herkese** açmak ist
 - Konuşmak yerine **altyazı/ekran metni** de olur; ama izin akışı İngilizce olmalı.
 - Süre uzun olmasın; her kısıtlı kapsamın ne yaptığı net olsun.
 
+## 9. TEŞHİS — "Tüm Drive erişimi" açıkken hâlâ "klasör bulunamadı / erişim yok" (22 Eylül)
+
+**Belirti:** Hem sende hem arkadaşında "tüm Drive erişimi" anahtarı açıkken (kod klasörün GERÇEK adını —
+"Müzik"— gösterdi, yani `folder_info` çağrısı bir tepki aldı) yine de "erişim yok" hatası alındı.
+
+**En olası neden (kodda değil, Google Cloud Console'da):** `drive` (tam Drive) kapsamı Google'da
+**kısıtlı (restricted)** bir kapsamdır — OAuth istemcisinin isteyebilmesi için önce Cloud Console'da
+proje OAuth consent screen'inin **"Data access"** sayfasına EKLENMİŞ olması gerekir (§5b). Daha önce bu
+sayfa kontrol edildiğinde (bu sohbetin önceki bir turunda) yalnızca `drive.file` ve `drive.appdata`
+listeleniyordu; `drive` kapsamı henüz eklenmemişti. Aşağıdaki §7 listesinde "ana sayfa/alan adı",
+"destek e-postası" ve "B planı kararı" hâlâ işaretsiz — bu da başvurunun tamamlanıp gönderilmediğini
+gösteriyor. Eklenmemiş/onaylanmamış bir kısıtlı kapsamı istemek genelde şu şekillerden biriyle sonuçlanır:
+Google token'dan o kapsamı sessizce düşürür (istemci `drive` istedi sanır ama gerçekte yalnızca
+`drive.file` verilir) YA DA giriş ekranında bir hata gösterir. Kod `drive` istiyor ve klasörün adını
+görebiliyor olmak (`folder_info`) bunu KESİN olarak ayırt etmiyor çünkü `folder_info` her iki kapsamda da
+aynı uç noktayı çağırıyor — 404/`NotVisible` dönmesi, gerçekte hâlâ dar (`drive.file`) bir belirteçle
+çalışıldığının en güçlü işareti.
+
+**Yapman gerekenler (yalnızca sen yapabilirsin, Google hesabın gerekiyor):**
+1. Cloud Console → OAuth consent screen → **Data access** → "Add or remove scopes" → `drive` kapsamını
+   ekle ve kaydet (§5b'deki gerekçe metnini kullanabilirsin, §4.1).
+2. Sonra §7'deki kalan maddeleri tamamla (ana sayfa, destek e-postası) ve **"Submit for verification"**
+   ile kısıtlı kapsam doğrulama başvurusunu gönder (video planı §6'da hazır).
+3. Doğrulama sürerken (birkaç gün) Google, projeye eklenmiş **test kullanıcılarına** (OAuth consent
+   screen → Audience → Test users) kapsamı yine de "Google doğrulamadı" uyarısıyla verir — sen ve
+   arkadaşının hesabını (`yağızefesarisoy@gmail.com`) test kullanıcı olarak ekleyip **hemen** deneyebilirsiniz,
+   doğrulamayı beklemeden.
+4. Test/onaydan sonra: Ayarlar'da anahtarı kapatıp tekrar aç (ya da doğrudan çıkış/giriş yap) ki YENİ
+   kapsamla YENİ bir onay ekranı çıksın — tarayıcıda "Bu uygulama Google tarafından doğrulanmadı" uyarısı
+   görürsen **Gelişmiş → (uygulama adı)'na git (güvenli değil)** ile devam et, bu kısıtlı kapsamlar için
+   beklenen bir ekrandır.
+
 ## 7. Senden gerekenler
-- [x] Gizlilik politikası: `kaanalper.github.io/public/promo/connectsync/privacy.html` (iletişim e-postası ekli). `drive` için isteğe bağlı üçüncü kapsam ve Limited Use ifadesi yerelde eklendi; **yayınlamak için o repoda commit + push gerekir**.
+- [x] Gizlilik politikası: `kaanalper.github.io/public/promo/connectsync/privacy.html` — **yayınlandı** (commit `9586097`, `kaanalper.github.io`).
 - [x] Cloud projesinin yayın durumu: **In production**.
 - [ ] Ana sayfa / alan adı (kendi alan adın var mı?).
 - [ ] Destek/iletişim e-postası (herkese açık sayfaya yazılacağı için sen seç).
