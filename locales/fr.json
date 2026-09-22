@@ -138,5 +138,7 @@
     "status_conflicts": "{n} fichier(s) en attente d'une décision",
     "status_conflicts_resolved": "{n} conflit(s) résolu(s)",
     "err_conflict_no_sync": "Cette synchronisation n'est pas active ; lancez d'abord la synchronisation.",
-    "err_conflict_resolve": "Impossible de résoudre le conflit : {e}"
+    "err_conflict_resolve": "Impossible de résoudre le conflit : {e}",
+    "status_foreign_account": "Cette synchronisation appartient à « {email} » ; elle reprendra une fois connecté avec ce compte",
+    "section_foreign_account": "Sur un Autre Compte (connecté avec le mauvais compte Google)"
 }

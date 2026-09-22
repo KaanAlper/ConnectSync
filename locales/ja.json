@@ -138,5 +138,7 @@
     "status_conflicts": "{n} 個のファイルが判断待ち",
     "status_conflicts_resolved": "{n} 件の競合を解決しました",
     "err_conflict_no_sync": "この同期は現在動作していません。先に同期を開始してください。",
-    "err_conflict_resolve": "競合を解決できませんでした: {e}"
+    "err_conflict_resolve": "競合を解決できませんでした: {e}",
+    "status_foreign_account": "この同期は '{email}' アカウントのものです。そのアカウントでログインすると再開します",
+    "section_foreign_account": "別のアカウントにあります（間違った Google アカウントでログイン中）"
 }

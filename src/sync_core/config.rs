@@ -16,6 +16,12 @@ pub struct SyncFolder {
     /// katılınan sync'ler); yeniden yüklemede eski davranış (yazılabilir) korunur.
     #[serde(default)]
     pub can_others_write: Option<bool>,
+    /// Sync eklendiğinde (oluşturma/kodla bağlanma/yeniden yükleme) oturum açık olan Google hesabı.
+    /// `None` = bu alan eklenmeden önceki eski sync'ler; hesap karşılaştırması yapılamaz, eski davranış
+    /// (genel "bulunamadı" akışı) korunur. Farklı bir hesaba geçildiğinde bu sync'leri ayırt etmek için
+    /// kullanılır — bkz. `main::foreign_account_folders`.
+    #[serde(default)]
+    pub added_with_email: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -219,6 +225,7 @@ impl AppConfig {
             path: path.to_string(),
             code: id.to_string(),
             can_others_write: None,
+            added_with_email: None,
         });
         EditApplied { is_new: true, old_path: None, code: id.to_string() }
     }
@@ -349,6 +356,7 @@ mod tests {
             path: path.into(),
             code: id.into(),
             can_others_write: None,
+            added_with_email: None,
         }
     }
 

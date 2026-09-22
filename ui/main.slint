@@ -27,6 +27,7 @@ export global Tr {
     in property <string> section_on_drive: "Drive'da olup bu bilgisayara eklenmemiş olanlar";
     in property <string> not_added_hint: "Henüz bu bilgisayara eklenmedi";
     in property <string> add_from_drive: "Drive'dan Ekle";
+    in property <string> section_foreign_account: "Başka Hesapta";
     in property <string> my_syncs;
     in property <string> find_from_cloud;
     in property <string> logout;
@@ -353,6 +354,8 @@ export component MainWindow inherits Window {
     in-out property <string> error_text: "";
     in-out property <[SyncFolderItem]> sync_folders: [];
     in-out property <[SyncFolderItem]> cloud_folders: [];
+    /// Klasör silinmemiş, yalnızca şu an oturum açık olan hesap başka: kendi bölümünde gösterilir.
+    in-out property <[SyncFolderItem]> foreign_folders: [];
     in-out property <bool> is_syncing: false;
 
     // UI state
@@ -361,6 +364,7 @@ export component MainWindow inherits Window {
     in-out property <bool> show_settings: false;
     in-out property <bool> this_pc_open: true;
     in-out property <bool> drive_open: true;
+    in-out property <bool> foreign_open: true;
     in-out property <bool> setting_autostart: false;
     in-out property <bool> setting_start_in_tray: true;
     in-out property <string> setting_language: "tr";
@@ -909,7 +913,7 @@ export component MainWindow inherits Window {
 
                 spacing: 10px;
 
-                if root.sync_folders.length == 0: VerticalLayout {
+                if root.sync_folders.length == 0 && root.foreign_folders.length == 0: VerticalLayout {
                     alignment: center;
                     vertical-stretch: 1;
                     spacing: 12px;
@@ -960,7 +964,7 @@ export component MainWindow inherits Window {
                     Rectangle { height: 40px; }
                 }
 
-                if root.sync_folders.length > 0 || root.cloud_folders.length > 0: ScrollView {
+                if root.sync_folders.length > 0 || root.cloud_folders.length > 0 || root.foreign_folders.length > 0: ScrollView {
 
 
                     width: 100%;
@@ -1318,10 +1322,93 @@ export component MainWindow inherits Window {
 
 
 
+                        // ── Bölüm 1.5: Klasör silinmemiş ama şu an başka bir Google hesabıyla giriş
+                        // yapılmış (hesap değiştirildi). "Bulunamadı" ile KARIŞTIRILMAMALI: doğru
+                        // hesapla giriş yapılınca döngü kendiliğinden devam eder; "Yeniden Yükle"
+                        // burada YOKTUR (yanlış hesapta yeni bir klasör oluşturup asıl veriyi
+                        // terk etmemek için).
+                        if root.sync_folders.length > 0 && root.foreign_folders.length > 0: Rectangle { height: 6px; }
+
+                        if root.foreign_folders.length > 0: Rectangle {
+                            height: 34px;
+                            HorizontalLayout {
+                                padding-left: 22px;
+                                padding-right: 20px;
+                                spacing: 8px;
+                                Text { text: Tr.section_foreign_account; color: Theme.warn; font-size: 1.05rem; font-weight: 700; vertical-alignment: center; overflow: elide; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Path {
+                                        width: 14px;
+                                        height: 14px;
+                                        viewbox-width: 24;
+                                        viewbox-height: 24;
+                                        commands: "M 5 9 L 12 16 L 19 9";
+                                        stroke: Theme.warn;
+                                        stroke-width: 2.5px;
+                                        transform-rotation: root.foreign_open ? 0deg : -90deg;
+                                        animate transform-rotation { duration: 300ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
+                                    }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                            TouchArea { clicked => { root.foreign_open = !root.foreign_open; } }
+                        }
+
+                        Rectangle {
+                            clip: true;
+                            property <length> content-h: root.foreign_folders.length > 0 ? (root.foreign_folders.length * 64px + (root.foreign_folders.length - 1) * 8px) : 0px;
+                            height: root.foreign_open ? self.content-h : 0px;
+                            animate height { duration: 300ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+                            VerticalLayout {
+                                height: parent.content-h;
+                                spacing: 8px;
+                                for ff in root.foreign_folders : HorizontalLayout {
+                                    padding-left: 20px;
+                                    padding-right: 20px;
+                                    Rectangle {
+                                        background: Theme.bg_raised;
+                                        border-radius: 8px;
+                                        border-width: 1px;
+                                        border-color: Theme.warn;
+                                        height: 64px;
+                                        HorizontalLayout {
+                                            padding: 10px;
+                                            spacing: 10px;
+                                            VerticalLayout {
+                                                alignment: center;
+                                                horizontal-stretch: 1;
+                                                min-width: 0px;
+                                                Text { text: ff.name; font-size: 1.0rem; color: Theme.text; font-weight: 600; overflow: elide; }
+                                                Text { text: ff.status; font-size: 0.72rem; color: Theme.text_dim; overflow: elide; wrap: word-wrap; }
+                                            }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Rectangle {
+                                                    height: 32px;
+                                                    border-radius: 6px;
+                                                    background: ta_fremove.pressed ? Theme.danger_hover : (ta_fremove.has-hover ? Theme.danger_hover : Theme.danger);
+                                                    HorizontalLayout {
+                                                        padding-left: 12px;
+                                                        padding-right: 12px;
+                                                        Text { text: Tr.missing_remove; color: Theme.on_accent; font-size: 0.8rem; font-weight: 700; vertical-alignment: center; }
+                                                    }
+                                                    ta_fremove := TouchArea {
+                                                        clicked => { root.remove_sync_folder(ff.id) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // ── Bölüm 2: Drive'da olup bu bilgisayara eklenmemiş olanlar (aç/kapa)
 
 
-                        if root.sync_folders.length > 0 && root.cloud_folders.length > 0: Rectangle { height: 6px; }
+                        if (root.sync_folders.length > 0 || root.foreign_folders.length > 0) && root.cloud_folders.length > 0: Rectangle { height: 6px; }
 
 
                         if root.cloud_folders.length > 0: Rectangle {
@@ -1558,10 +1645,10 @@ export component MainWindow inherits Window {
                 // Liste altı ayırıcı çizgi + alt çubukla boşluk (ayarlar sayfasıyla aynı)
 
 
-                if root.sync_folders.length > 0 || root.cloud_folders.length > 0: Rectangle { height: 1px; background: Theme.surface; }
+                if root.sync_folders.length > 0 || root.cloud_folders.length > 0 || root.foreign_folders.length > 0: Rectangle { height: 1px; background: Theme.surface; }
 
 
-                if root.sync_folders.length > 0 || root.cloud_folders.length > 0: Rectangle { height: 12px; }
+                if root.sync_folders.length > 0 || root.cloud_folders.length > 0 || root.foreign_folders.length > 0: Rectangle { height: 12px; }
             }
 
             // ── Sync kodu giriş dialogu

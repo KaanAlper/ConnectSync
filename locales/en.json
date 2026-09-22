@@ -138,5 +138,7 @@
     "status_conflicts": "{n} file(s) waiting for a decision",
     "status_conflicts_resolved": "{n} conflict(s) resolved",
     "err_conflict_no_sync": "This sync is not running right now; start syncing first.",
-    "err_conflict_resolve": "Could not resolve the conflict: {e}"
+    "err_conflict_resolve": "Could not resolve the conflict: {e}",
+    "status_foreign_account": "This sync belongs to '{email}'; it resumes once you sign in with that account",
+    "section_foreign_account": "On a Different Account (signed in with the wrong Google account)"
 }

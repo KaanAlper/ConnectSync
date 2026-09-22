@@ -138,5 +138,7 @@
     "status_conflicts": "{n} archivo(s) esperan una decisión",
     "status_conflicts_resolved": "{n} conflicto(s) resuelto(s)",
     "err_conflict_no_sync": "Esta sincronización no está en marcha; inicia la sincronización primero.",
-    "err_conflict_resolve": "No se pudo resolver el conflicto: {e}"
+    "err_conflict_resolve": "No se pudo resolver el conflicto: {e}",
+    "status_foreign_account": "Esta sincronización pertenece a '{email}'; continuará cuando inicies sesión con esa cuenta",
+    "section_foreign_account": "En Otra Cuenta (sesión iniciada con la cuenta de Google equivocada)"
 }

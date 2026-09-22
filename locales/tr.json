@@ -138,5 +138,7 @@
     "status_conflicts": "{n} dosya karar bekliyor",
     "status_conflicts_resolved": "{n} dosyanın çakışması çözüldü",
     "err_conflict_no_sync": "Bu sync şu an çalışmıyor; önce eşitlemeyi başlatın.",
-    "err_conflict_resolve": "Çakışma çözülemedi: {e}"
+    "err_conflict_resolve": "Çakışma çözülemedi: {e}",
+    "status_foreign_account": "Bu sync '{email}' hesabına ait; o hesapla giriş yapılınca devam eder",
+    "section_foreign_account": "Başka Hesapta (yanlış Google hesabıyla giriş yapılmış)"
 }

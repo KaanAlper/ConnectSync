@@ -138,5 +138,7 @@
     "status_conflicts": "파일 {n}개가 결정을 기다리는 중",
     "status_conflicts_resolved": "충돌 {n}개 해결됨",
     "err_conflict_no_sync": "이 동기화가 실행 중이 아닙니다. 먼저 동기화를 시작하세요.",
-    "err_conflict_resolve": "충돌을 해결하지 못했습니다: {e}"
+    "err_conflict_resolve": "충돌을 해결하지 못했습니다: {e}",
+    "status_foreign_account": "이 동기화는 '{email}' 계정에 속합니다. 해당 계정으로 로그인하면 다시 시작됩니다",
+    "section_foreign_account": "다른 계정에 있음 (잘못된 Google 계정으로 로그인됨)"
 }

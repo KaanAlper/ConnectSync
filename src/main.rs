@@ -189,6 +189,7 @@ fn apply_language(ui: &MainWindow, lang: &str) {
         set_section_this_pc => "section_this_pc",
         set_section_on_drive => "section_on_drive",
         set_add_from_drive => "add_from_drive",
+        set_section_foreign_account => "section_foreign_account",
         set_not_added_hint => "not_added_hint",
         set_section_advanced => "section_advanced",
         set_watch_changes_label => "watch_changes_label",
@@ -226,6 +227,11 @@ pub struct FolderState {
     pub error: String,
     /// Aktif sync döngüsü çalışıyorsa onun ilerleme/ağ durumu (MB/GB çubuğu, bağlantı kopukluğu).
     pub progress: Option<Arc<sync_core::progress::Progress>>,
+    /// Klasör şu an Drive'da görünmüyor VE bu sync'in daha önce çalıştığı bilinen hesap (varsa)
+    /// şu an oturum açık olan hesaptan FARKLI: klasör silinmemiş, yalnızca yanlış hesapla giriş
+    /// yapılmış. `Some(email)` = o hesap; bu sync normal listeden ayrılıp "Başka Hesapta" bölümünde
+    /// gösterilir ve döngü (silinmiş sanıp durmak yerine) hesap değişip değişmediğini beklemeye devam eder.
+    pub foreign_account: Option<String>,
 }
 
 #[derive(Default)]
@@ -281,19 +287,26 @@ pub fn update_ui_folders(ui: &crate::MainWindow, app_state: &std::sync::Arc<std:
     let config = crate::sync_core::config::AppConfig::load();
     let model = std::rc::Rc::new(slint::VecModel::<crate::SyncFolderItem>::default());
     let cloud_model = std::rc::Rc::new(slint::VecModel::<crate::SyncFolderItem>::default());
+    let foreign_model = std::rc::Rc::new(slint::VecModel::<crate::SyncFolderItem>::default());
     let state = app_state.lock().unwrap();
     for f in &config.sync_folders {
         let default_state = crate::FolderState::default();
         let fs = state.folder_states.get(&f.id).unwrap_or(&default_state);
-
-        model.push(crate::SyncFolderItem {
+        let item = crate::SyncFolderItem {
             id: f.id.clone().into(),
             name: f.name.clone().into(),
             path: f.path.clone().into(),
             code: f.code.clone().into(),
             status: if fs.error.is_empty() { fs.status.as_str().into() } else { fs.error.as_str().into() },
             is_syncing: fs.is_syncing,
-        });
+        };
+        // Klasör silinmemiş, yalnızca başka bir Google hesabıyla giriş yapılmış: normal listeden
+        // ayrılıp kendi bölümünde gösterilir (bkz. FolderState::foreign_account).
+        if fs.foreign_account.is_some() {
+            foreign_model.push(item);
+        } else {
+            model.push(item);
+        }
     }
     // Sadece Drive'da olanlar (bu PC'ye eklenmemiş)
     for (code, name) in cloud_only(&config, &state) {
@@ -309,6 +322,7 @@ pub fn update_ui_folders(ui: &crate::MainWindow, app_state: &std::sync::Arc<std:
     drop(state);
     ui.set_sync_folders(model.into());
     ui.set_cloud_folders(cloud_model.into());
+    ui.set_foreign_folders(foreign_model.into());
 }
 
 /// Bir sync'i bu bilgisayardan kaldırır: döngüyü durdurur, config'ten siler, listeyi yeniler.
@@ -969,6 +983,8 @@ fn setup_ui(
                                     path: path.to_string_lossy().to_string(),
                                     code: universal_code.clone(),
                                     can_others_write: Some(can_others_write),
+                                    // Sync döngüsü başladığı an kendiliğinden doldurur (backfill_account_email).
+                                    added_with_email: None,
                                 });
                             });
                             if let Err(e) = saved {
@@ -1131,6 +1147,70 @@ fn setup_ui(
     });
 }
 
+/// Bir sync'in Drive'da görünmemesinin iki OLASI nedeni: gerçekten silinmiş, ya da yalnızca şu an
+/// oturum açık olan Google hesabı bu sync'in ait olduğu hesaptan farklı (hesap değiştirildi/çıkış
+/// yapıldı). Bunlar kullanıcıya çok farklı gösterilmeli: biri "sil ya da yeniden yükle" sorar, öteki
+/// "doğru hesaba geç" der ve arka planda kendiliğinden düzelmesini bekler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Absence {
+    Missing,
+    ForeignAccount(String),
+}
+
+/// Saf karar: iki hesap e-postası biliniyor ve FARKLIYSA "başka hesapta" (kayıtlı olan döner, o
+/// hesabın gösterilecek adı bu). Emin olunamıyorsa (biri bilinmiyor ya da ikisi aynı) muhafazakâr
+/// seçim: `Missing` — eski davranış korunur.
+fn classify_by_emails(stored: Option<&str>, current: Option<&str>) -> Absence {
+    match (stored, current) {
+        (Some(s), Some(c)) if s != c => Absence::ForeignAccount(s.to_string()),
+        _ => Absence::Missing,
+    }
+}
+
+/// Şu an Drive'da görünmeyen bir sync için nedeni sınıflandırır. Emin olunamıyorsa (bu sync hangi
+/// hesapla çalıştığını hiç kaydetmemiş, ya da şimdiki hesabın e-postası alınamadı) MUHAFAZAKÂR seçim
+/// yapılır: `Missing` — eski davranış korunur, "başka hesapta" demek için kanıt gerekir.
+async fn classify_absence(drive: &sync_core::drive::DriveClient, sync_code: &str) -> Absence {
+    let stored = sync_core::config::AppConfig::load()
+        .sync_folders
+        .iter()
+        .find(|f| f.id == sync_code)
+        .and_then(|f| f.added_with_email.clone());
+    let current = drive.signed_in_email().await.ok().flatten();
+    classify_by_emails(stored.as_deref(), current.as_deref())
+}
+
+/// Bu sync ilk kez (ya da bu alan eklenmeden önce oluşturulduğu için hâlâ boşsa) erişilebilir
+/// olduğunda hangi hesapla çalıştığını bir kez kaydeder. Sonraki her turda `added_with_email` zaten
+/// doluysa dokunmaz — ekstra ağ isteği yalnızca ilk seferde.
+async fn backfill_account_email(drive: &sync_core::drive::DriveClient, sync_code: &str) {
+    let already_known = sync_core::config::AppConfig::load()
+        .sync_folders
+        .iter()
+        .find(|f| f.id == sync_code)
+        .is_some_and(|f| f.added_with_email.is_some());
+    if already_known {
+        return;
+    }
+    if let Ok(Some(email)) = drive.signed_in_email().await {
+        let code = sync_code.to_string();
+        log_failure(
+            "Hesap bilgisi kaydedilemedi",
+            sync_core::config::AppConfig::update(|c| {
+                if let Some(f) = c.sync_folders.iter_mut().find(|f| f.id == code) {
+                    f.added_with_email = Some(email);
+                }
+            }),
+        );
+    }
+}
+
+/// `foreign_account` durumunu yazar/temizler ve arayüzdeki listeyi (3. bölüm) günceller.
+fn set_foreign_account(app_state: &Arc<Mutex<AppState>>, sync_code: &str, email: Option<String>) {
+    let mut st = app_state.lock().unwrap();
+    st.folder_states.entry(sync_code.to_string()).or_default().foreign_account = email;
+}
+
 // ---------------------------------------------------------------------------
 // Periyodik sync döngüsü — watcher + timer birleşik
 // ---------------------------------------------------------------------------
@@ -1270,14 +1350,38 @@ async fn sync_loop_task(
         folder.clone(),
     );
     // Klasör Drive'da silinmiş mi? Hata metnini ayrıştırmak yerine doğrudan sorulur; böylece
-    // alakasız bir hata "verin silinmiş" popup'ına düşmez.
-    match drive.folder_exists(&folder_id).await {
-        Ok(false) => {
-            drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
-            return;
+    // alakasız bir hata "verin silinmiş" popup'ına düşmez. Görünmüyorsa önce ASIL nedeni ayırt
+    // edilir (silinmiş mi, yoksa yanlış hesapla mı girilmiş): bkz. `classify_absence`.
+    loop {
+        match drive.folder_exists(&folder_id).await {
+            Ok(true) => {
+                backfill_account_email(&drive, &sync_code).await;
+                set_foreign_account(&app_state_loop, &sync_code, None);
+                break;
+            }
+            Ok(false) => match classify_absence(&drive, &sync_code).await {
+                Absence::ForeignAccount(email) => {
+                    set_foreign_account(&app_state_loop, &sync_code, Some(email.clone()));
+                    update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("status_foreign_account", &[("email", &email)]), false);
+                    if let Some(ui) = ui_weak.upgrade() {
+                        update_ui_folders(&ui, &app_state_loop);
+                    }
+                    // Hesap düzelirse kendiliğinden devam etsin diye bekleyip yeniden dener.
+                    tokio::select! {
+                        _ = &mut stop_rx => { return; }
+                        () = tokio::time::sleep(std::time::Duration::from_secs(60)) => {}
+                    }
+                }
+                Absence::Missing => {
+                    drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
+                    return;
+                }
+            },
+            Err(e) => {
+                println!("Klasör denetimi yapılamadı ({folder_id}): {e}");
+                break; // Ağ/yetki hatası "silinmiş" demek değil: eskisi gibi devam etmeyi dene.
+            }
         }
-        Ok(true) => {}
-        Err(e) => println!("Klasör denetimi yapılamadı ({folder_id}): {e}"),
     }
 
     let salt = match temp_engine.load_or_create_salt().await {
@@ -1353,58 +1457,74 @@ async fn sync_loop_task(
 
     // Döngü her turda bir kere sync yapıp sonra bekler
     loop {
+        let mut skip_round = false;
         match engine.drive_client.folder_exists(&engine.drive_folder_id).await {
-            Ok(false) => {
-                drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
-                break;
+            Ok(true) => {
+                backfill_account_email(&engine.drive_client, &sync_code).await;
+                set_foreign_account(&app_state_loop, &sync_code, None);
             }
-            Ok(true) => {}
+            Ok(false) => match classify_absence(&engine.drive_client, &sync_code).await {
+                Absence::ForeignAccount(email) => {
+                    set_foreign_account(&app_state_loop, &sync_code, Some(email.clone()));
+                    update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("status_foreign_account", &[("email", &email)]), false);
+                    if let Some(ui) = ui_weak.upgrade() {
+                        update_ui_folders(&ui, &app_state_loop);
+                    }
+                    skip_round = true;
+                }
+                Absence::Missing => {
+                    drive_missing::report(&ui_weak, &app_state_loop, &sync_code);
+                    break;
+                }
+            },
             // Ağ/yetki hatası "silinmiş" demek değildir: normal akış kendi hatasını verir, ama
             // sessizce yutma.
             Err(e) => println!("Klasör denetimi yapılamadı ({}): {e}", engine.drive_folder_id),
         }
 
-        // 1. Önce Pull (Drive -> Yerel). "İndiriliyor" denmez: önce farklar incelenir; metin,
-        // motorun gerçek fazına göre kendiliğinden değişir (bkz. `with_phase_status`).
-        update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_checking"), true);
-        let mut pulled = 0usize;
-        // Bu turda YÜKLENMEYECEK dosyalar (çözülmemiş çakışmalar).
-        let skip_paths: std::collections::HashSet<String>;
-        tokio::select! {
-            _ = &mut stop_rx => {
-                report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
-                break;
-            }
-            res = with_phase_status(
-                engine.run_sync_pull(&folder, true),
-                &engine.drive_client.progress,
-                &ui_weak,
-                &app_state_loop,
-                &sync_code,
-            ) => {
-                match res {
-                    Ok(report) => {
-                        pulled = report.restored_files;
-                        skip_paths = report.conflicts.iter().cloned().collect();
-                        conflicts::report(&app_state_loop, &sync_code, report.conflicts);
-                    }
-                    Err(e) => {
-                        // Pull başarısız: çakışmaların güncel hali bilinmiyor. Bilinenleri yüklemeden
-                        // bırak ki push uzaktaki değişikliğin üstüne yazmasın.
-                        skip_paths = app_state_loop.lock().unwrap().conflicts.files(&sync_code).into_iter().collect();
-                        update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("err_pull", &[("e", &e.to_string())]), false);
+        if !skip_round {
+            // 1. Önce Pull (Drive -> Yerel). "İndiriliyor" denmez: önce farklar incelenir; metin,
+            // motorun gerçek fazına göre kendiliğinden değişir (bkz. `with_phase_status`).
+            update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::t("status_checking"), true);
+            let mut pulled = 0usize;
+            // Bu turda YÜKLENMEYECEK dosyalar (çözülmemiş çakışmalar).
+            let skip_paths: std::collections::HashSet<String>;
+            tokio::select! {
+                _ = &mut stop_rx => {
+                    report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
+                    break;
+                }
+                res = with_phase_status(
+                    engine.run_sync_pull(&folder, true),
+                    &engine.drive_client.progress,
+                    &ui_weak,
+                    &app_state_loop,
+                    &sync_code,
+                ) => {
+                    match res {
+                        Ok(report) => {
+                            pulled = report.restored_files;
+                            skip_paths = report.conflicts.iter().cloned().collect();
+                            conflicts::report(&app_state_loop, &sync_code, report.conflicts);
+                        }
+                        Err(e) => {
+                            // Pull başarısız: çakışmaların güncel hali bilinmiyor. Bilinenleri yüklemeden
+                            // bırak ki push uzaktaki değişikliğin üstüne yazmasın.
+                            skip_paths = app_state_loop.lock().unwrap().conflicts.files(&sync_code).into_iter().collect();
+                            update_status(&ui_weak, &app_state_loop, &sync_code, &i18n::tf("err_pull", &[("e", &e.to_string())]), false);
+                        }
                     }
                 }
             }
-        }
 
-        // 2. Sonra Push (Yerel -> Drive)
-        tokio::select! {
-            _ = &mut stop_rx => {
-                report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
-                break;
+            // 2. Sonra Push (Yerel -> Drive)
+            tokio::select! {
+                _ = &mut stop_rx => {
+                    report_stop(&ui_weak, &app_state_loop, &sync_code, generation);
+                    break;
+                }
+                _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code, pulled, skip_paths) => {}
             }
-            _ = run_push(&engine, &ui_weak, &app_state_loop, &sync_code, pulled, skip_paths) => {}
         }
 
         tokio::select! {
@@ -2031,6 +2151,7 @@ mod tests {
             path: "/tmp/x".into(),
             code: code.into(),
             can_others_write: None,
+            added_with_email: None,
         }
     }
 
@@ -2047,6 +2168,27 @@ mod tests {
         assert_eq!(drive_folder_id("cs-1a-B_c-d-deadbeef"), "1a-B_c-d");
         assert_eq!(drive_folder_id("cs-abc-key"), "abc");
         assert_eq!(drive_folder_id("kodsuz"), "kodsuz");
+    }
+
+    #[test]
+    fn a_different_account_is_recognized_as_foreign_not_missing() {
+        assert_eq!(
+            classify_by_emails(Some("a@x.com"), Some("b@x.com")),
+            Absence::ForeignAccount("a@x.com".to_string())
+        );
+    }
+
+    #[test]
+    fn the_same_account_means_the_folder_is_genuinely_missing() {
+        assert_eq!(classify_by_emails(Some("a@x.com"), Some("a@x.com")), Absence::Missing);
+    }
+
+    #[test]
+    fn an_unknown_account_on_either_side_falls_back_to_missing() {
+        // Eski sync (hesap hiç kaydedilmemiş) ya da şimdiki e-posta alınamadı: emin olunamaz.
+        assert_eq!(classify_by_emails(None, Some("b@x.com")), Absence::Missing);
+        assert_eq!(classify_by_emails(Some("a@x.com"), None), Absence::Missing);
+        assert_eq!(classify_by_emails(None, None), Absence::Missing);
     }
 
     #[test]

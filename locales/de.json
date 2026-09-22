@@ -138,5 +138,7 @@
     "status_conflicts": "{n} Datei(en) warten auf eine Entscheidung",
     "status_conflicts_resolved": "{n} Konflikt(e) gelöst",
     "err_conflict_no_sync": "Diese Synchronisierung läuft gerade nicht; starte zuerst die Synchronisierung.",
-    "err_conflict_resolve": "Konflikt konnte nicht gelöst werden: {e}"
+    "err_conflict_resolve": "Konflikt konnte nicht gelöst werden: {e}",
+    "status_foreign_account": "Diese Synchronisierung gehört zu '{email}'; sie wird fortgesetzt, sobald du dich mit diesem Konto anmeldest",
+    "section_foreign_account": "Anderes Konto (mit dem falschen Google-Konto angemeldet)"
 }

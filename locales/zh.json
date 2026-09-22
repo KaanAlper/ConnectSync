@@ -138,5 +138,7 @@
     "status_conflicts": "{n} 个文件等待处理",
     "status_conflicts_resolved": "已解决 {n} 个冲突",
     "err_conflict_no_sync": "此同步当前未运行；请先开始同步。",
-    "err_conflict_resolve": "无法解决冲突：{e}"
+    "err_conflict_resolve": "无法解决冲突：{e}",
+    "status_foreign_account": "此同步属于“{email}”；使用该账户登录后会自动恢复",
+    "section_foreign_account": "在其他账户中（登录了错误的 Google 账户）"
 }
