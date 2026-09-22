@@ -32,6 +32,17 @@ const NET_MAX_RETRIES: u32 = 120;
 /// (Drive'daki klasör adı "ConnectSync_<hex>" olarak kalır; görünen ad burada tutulur.)
 const NAME_PROP: &str = "cs_name";
 
+/// Ada göre yapılan Drive aramasının sonuçları arasından GERÇEK bir ConnectSync klasörü seçer:
+/// yalnızca ConnectSync'in yazdığı `cs_name` imzasını (`appProperties`) taşıyanlar sayılır. Adı
+/// tesadüfen aynı olan ama bu imzayı taşımayan bir klasöre asla katılmaz (bkz. `get_or_create_folder`).
+/// Birden fazla imzalı aday varsa ilki (Drive'ın sıraladığı gibi) alınır.
+fn pick_connectsync_folder(files: Vec<FolderEntry>) -> Option<String> {
+    files
+        .into_iter()
+        .find(|f| f.app_properties.as_ref().is_some_and(|p| p.contains_key(NAME_PROP)))
+        .map(|f| f.id)
+}
+
 // ---------------------------------------------------------------------------
 // Hata tipi (Send + Sync, engine'deki `Box<dyn Error>`'a `?` ile dönüşür)
 // ---------------------------------------------------------------------------
@@ -236,6 +247,13 @@ impl DriveClient {
     /// Drive'daki ConnectSync klasörlerini (id, görünen ad) olarak döndürür.
     /// Görünen ad, kullanıcının klasör oluştururken seçtiği gerçek isimdir
     /// (appProperties'te saklanır); eski/adsız klasörlerde Drive adına geri düşülür.
+    ///
+    /// Sorgu BİLİNÇLİ olarak `drive` yetkisiyle TÜM Drive'da arar (adında "ConnectSync_" geçen her
+    /// klasör — kullanıcıyla paylaşılmış başkalarının klasörleri dahil): bu, farklı hesapların aynı
+    /// klasörü bulabilmesi için gerekli. Güvenlik sınırı burada değil, ÇAĞIRANDADIR: `scan_cloud_folders`
+    /// (main.rs) sonucu her zaman appDataFolder'daki KENDİ anahtar kaydıyla (`get_sync_keys`) kesiştirir —
+    /// yalnızca anahtarı bu hesapta kayıtlı klasörler kullanıcıya gösterilir, geniş arama tek başına
+    /// hiçbir dosyayı ifşa etmez.
     pub async fn list_cloud_folders(&self) -> Result<Vec<(String, String)>, DriveError> {
         let q = "name contains 'ConnectSync_' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
         let url = format!(
@@ -302,7 +320,14 @@ impl DriveClient {
         }
     }
 
-    pub async fn get_or_create_folder(&self, 
+    /// Ada göre bir ConnectSync klasörü bulur ya da yenisini oluşturur.
+    ///
+    /// Arama tüm Drive'da (`drive` yetkisiyle: kullanıcıyla paylaşılan başkalarının dosyaları dahil)
+    /// isme göre yapılır — ama bulunan aday yalnızca `appProperties`'te ConnectSync imzası (`cs_name`)
+    /// taşıyorsa kabul edilir. `appProperties` Drive'da İSTEMCİYE ÖZELDİR (yalnızca onu yazan OAuth
+    /// istemcisi görür), yani bu imza sadece ConnectSync'in (herhangi bir hesapta) oluşturduğu
+    /// klasörlerde olabilir; aynı ada sahip ALAKASIZ bir klasöre (adı tesadüfen çakışan) asla katılmaz.
+    pub async fn get_or_create_folder(&self,
         name: &str,
         parent_id: Option<&str>,
         can_others_write: bool,
@@ -318,12 +343,12 @@ impl DriveClient {
         let url = format!(
             "{API}/files?q={}&spaces=drive&pageSize=10&fields={}",
             urlencoding::encode(&q),
-            urlencoding::encode("files(id,name)")
+            urlencoding::encode("files(id,name,appProperties)")
         );
 
-        let list: FileList = self.send(|c| c.get(&url)).await?.json().await?;
-        if let Some(f) = list.files.into_iter().next() {
-            return Ok(f.id);
+        let list: FolderList = self.send(|c| c.get(&url)).await?.json().await?;
+        if let Some(id) = pick_connectsync_folder(list.files) {
+            return Ok(id);
         }
 
         let mut body = json!({ "name": name, "mimeType": FOLDER_MIME });
@@ -804,6 +829,39 @@ mod tests {
         assert_eq!(email(r#"{"user":{"emailAddress":"a@b.com"}}"#), Some("a@b.com".into()));
         assert_eq!(email(r#"{"user":{}}"#), None);
         assert_eq!(email("{}"), None);
+    }
+
+    fn entry(id: &str, name: &str, marked: bool) -> FolderEntry {
+        FolderEntry {
+            id: id.to_string(),
+            name: name.to_string(),
+            app_properties: marked.then(|| {
+                let mut m = HashMap::new();
+                m.insert(NAME_PROP.to_string(), "Müzik".to_string());
+                m
+            }),
+        }
+    }
+
+    #[test]
+    fn picks_the_connectsync_marked_candidate_and_ignores_an_unrelated_same_name_folder() {
+        // Adı tesadüfen aynı ama ConnectSync imzası taşımayan bir klasör var: ona katılınmamalı.
+        let files = vec![entry("unrelated", "ConnectSync_abcd1234", false)];
+        assert_eq!(pick_connectsync_folder(files), None);
+    }
+
+    #[test]
+    fn picks_the_first_marked_candidate_when_one_exists() {
+        let files = vec![
+            entry("unrelated", "ConnectSync_abcd1234", false),
+            entry("ours", "ConnectSync_abcd1234", true),
+        ];
+        assert_eq!(pick_connectsync_folder(files), Some("ours".to_string()));
+    }
+
+    #[test]
+    fn an_empty_result_list_picks_nothing() {
+        assert_eq!(pick_connectsync_folder(vec![]), None);
     }
 
     #[test]

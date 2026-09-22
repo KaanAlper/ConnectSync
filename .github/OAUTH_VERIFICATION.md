@@ -97,12 +97,17 @@ karakter; olduğu gibi yapıştır:
 ## 5. Başvurudan ÖNCE koddan doğrulanması gerekenler
 
 Gerekçede "başka dosyalara bakmıyoruz" diyeceksek kod bunu doğru yapmalı:
-- [ ] `list_cloud_folders` sorgusu `name contains 'ConnectSync_'` ile **tüm Drive'da** arıyor. `drive` yetkisiyle bu,
+- [x] `list_cloud_folders` sorgusu `name contains 'ConnectSync_'` ile **tüm Drive'da** arıyor. `drive` yetkisiyle bu,
       kullanıcıyla paylaşılan **başkalarının** klasörlerini de döndürebilir. Yalnızca anahtar kaydında bulunanları
-      göstermek (mevcut davranış) doğru; ama arama kapsamının bilinçli olduğu kodda yorumlanmalı.
-- [ ] `get_or_create_folder(name)` **ada göre** arıyor: tüm Drive'da aynı adlı bir klasörü eşleştirebilir. Yeni
-      yetkiyle yanlış klasöre katılmamak için ada değil **kimliğe/anahtara** dayanmalı ya da eşleşme doğrulanmalı.
-- [ ] Silme akışı (`delete_drive_sync`) yalnızca kullanıcının seçtiği sync klasörünü silmeli.
+      göstermek (mevcut davranış) doğru; arama kapsamının bilinçli olduğu artık `list_cloud_folders`'ın doc yorumunda
+      açıklanıyor (`crates/connectsync-core/src/drive.rs`).
+- [x] `get_or_create_folder(name)` **ada göre** arıyordu: tüm Drive'da aynı adlı bir klasörü eşleştirebilirdi. Artık
+      bulunan aday yalnızca ConnectSync'in yazdığı `appProperties` imzasını (`cs_name`, istemciye özel — başka bir
+      uygulama/klasör bunu asla taşıyamaz) taşıyorsa kabul ediliyor; taşımıyorsa yenisi oluşturuluyor
+      (`pick_connectsync_folder`, 3 yeni test).
+- [x] Silme akışı (`delete_drive_sync`) yalnızca kullanıcının seçtiği sync klasörünü siliyor: silmeden önce
+      `folder_info` ile klasörün gerçekten bir ConnectSync klasörü olduğu doğrulanıyor, kalıcı silme yerine çöp
+      kutusuna taşınıyor (commit `2696b52`).
 
 ## 5b. Cloud Console "Restricted scopes" formu (yapıştırdığın ekrana göre)
 
