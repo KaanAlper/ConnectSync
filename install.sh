@@ -1,7 +1,49 @@
 #!/usr/bin/env bash
 set -e
 
-echo "🚀 Installing ConnectSync for Linux..."
+GUM_BIN="gum"
+if ! command -v gum >/dev/null 2>&1; then
+    printf '\033[1;36m>> Arayuz araci (gum) indiriliyor...\033[0m\n'
+    GUM_DIR="/tmp/asena_gum"
+    mkdir -p "$GUM_DIR"
+    curl -sL "https://github.com/charmbracelet/gum/releases/download/v2.0.2/gum_2.0.2_Linux_x86_64.tar.gz" | tar -xz -C "$GUM_DIR" 2>/dev/null || true
+    GUM_BIN="$(find "$GUM_DIR" -name "gum" -type f | head -n 1)"
+    [ -n "$GUM_BIN" ] && chmod +x "$GUM_BIN" || GUM_BIN="gum"
+fi
+
+banner() {
+    if [ -x "$GUM_BIN" ]; then
+        "$GUM_BIN" style --foreground 212 --border-foreground 212 --border double --align center --width 50 --margin "1 2" --padding "1 2" "Kurulum Sihirbazi"
+    else
+        printf '\033[1;35m=== Kurulum Sihirbazi ===\033[0m\n'
+    fi
+}
+say() {
+    if [ -x "$GUM_BIN" ]; then
+        "$GUM_BIN" style --foreground 86 ">> set -e
+"
+    else
+        printf '\033[1;36m>> %s\033[0m\n' "set -e
+"
+    fi
+}
+die() {
+    if [ -x "$GUM_BIN" ]; then
+        "$GUM_BIN" style --foreground 196 "!! set -e
+"
+    else
+        printf '\033[1;31m!! %s\033[0m\n' "set -e
+" >&2
+    fi
+    exit 1
+}
+clear
+banner
+if [ -x "$GUM_BIN" ]; then
+    "$GUM_BIN" confirm "Kurulumu baslatmak istiyor musunuz?" || { say "Iptal edildi."; exit 0; }
+fi
+
+say ""🚀 Installing ConnectSync for Linux...""
 
 # Define paths
 BIN_DIR="$HOME/.local/bin"
@@ -15,44 +57,44 @@ mkdir -p "$ICON_DIR"
 
 # Check for required dependency (xdotool) for enigo / libxdo.so.3
 if ! command -v xdotool &> /dev/null && [ ! -f "/usr/lib/libxdo.so.3" ] && [ ! -f "/usr/lib/x86_64-linux-gnu/libxdo.so.3" ]; then
-    echo "⚠️  Missing dependency: libxdo.so.3 (xdotool)"
-    echo "ConnectSync requires 'xdotool' for mouse/keyboard automation features."
+    say ""⚠️  Missing dependency: libxdo.so.3 (xdotool)""
+    say ""ConnectSync requires 'xdotool' for mouse/keyboard automation features.""
     if command -v apt-get &> /dev/null; then
-        echo "Installing xdotool via apt (requires sudo)..."
+        say ""Installing xdotool via apt (requires sudo)...""
         sudo apt-get update && sudo apt-get install -y xdotool
     elif command -v pacman &> /dev/null; then
-        echo "Installing xdotool via pacman (requires sudo)..."
+        say ""Installing xdotool via pacman (requires sudo)...""
         sudo pacman -Sy --noconfirm xdotool
     elif command -v dnf &> /dev/null; then
-        echo "Installing xdotool via dnf (requires sudo)..."
+        say ""Installing xdotool via dnf (requires sudo)...""
         sudo dnf install -y xdotool
     else
-        echo "❌ Please install 'xdotool' manually using your system package manager."
+        say ""❌ Please install 'xdotool' manually using your system package manager.""
     fi
 fi
 
 # Fetch latest release info from GitHub
-echo "🔍 Finding latest release..."
+say ""🔍 Finding latest release...""
 LATEST_TAG=$(curl -s "https://api.github.com/repos/KaanAlper/ConnectSync/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")')
 
 if [ -z "$LATEST_TAG" ]; then
-    echo "❌ Failed to fetch latest release tag. Please check your internet connection or GitHub API limits."
+    say ""❌ Failed to fetch latest release tag. Please check your internet connection or GitHub API limits.""
     exit 1
 fi
 
-echo "📦 Downloading ConnectSync version $LATEST_TAG..."
+say ""📦 Downloading ConnectSync version $LATEST_TAG...""
 DOWNLOAD_URL="https://github.com/KaanAlper/ConnectSync/releases/download/$LATEST_TAG/ConnectSync-Linux"
 
 curl -L -o "$BIN_DIR/connectsync" "$DOWNLOAD_URL"
 chmod +x "$BIN_DIR/connectsync"
 
-echo "🎨 Downloading application icon..."
+say ""🎨 Downloading application icon...""
 ICON_URL="https://raw.githubusercontent.com/KaanAlper/ConnectSync/main/assets/logo_square.png"
 if ! curl -f -sSL -o "$ICON_DIR/connectsync.png" "$ICON_URL"; then
-    echo "⚠️  Warning: Failed to download icon. Using default icon."
+    say ""⚠️  Warning: Failed to download icon. Using default icon.""
 fi
 
-echo "📝 Creating desktop entry..."
+say ""📝 Creating desktop entry...""
 cat > "$APP_DIR/connectsync.desktop" <<DESK
 [Desktop Entry]
 Name=ConnectSync
@@ -75,9 +117,11 @@ fi
 
 # Ensure BIN_DIR is in PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    echo "⚠️  Note: $BIN_DIR is not in your PATH."
-    echo "Please add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your ~/.bashrc or ~/.zshrc"
+    say ""⚠️  Note: $BIN_DIR is not in your PATH.""
+    say ""Please add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your ~/.bashrc or ~/.zshrc""
 fi
 
-echo "✅ ConnectSync installed successfully!"
-echo "You can now launch it from your application menu or by typing 'connectsync' in the terminal."
+say ""✅ ConnectSync installed successfully!""
+say ""You can now launch it from your application menu or by typing 'connectsync' in the terminal.""
+
+
