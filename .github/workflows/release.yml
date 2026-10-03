@@ -62,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
 
       - name: Write the OAuth client file
         shell: bash
@@ -76,8 +78,6 @@ jobs:
             fi
             printf '%s' "$GOOGLE_CLIENT_SECRET_JSON" > client_secret.json
           fi
-        with:
-          ref: ${{ needs.version.outputs.sha }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
