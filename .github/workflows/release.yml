@@ -62,6 +62,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Write the OAuth client file
+        shell: bash
+        env:
+          GOOGLE_CLIENT_SECRET_JSON: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}
+        run: |
+          # include_bytes! needs it; the repository does not carry it
+          if [ ! -f client_secret.json ]; then
+            if [ -z "$GOOGLE_CLIENT_SECRET_JSON" ]; then
+              echo "::error::The GOOGLE_CLIENT_SECRET_JSON secret is missing"
+              exit 1
+            fi
+            printf '%s' "$GOOGLE_CLIENT_SECRET_JSON" > client_secret.json
+          fi
         with:
           ref: ${{ needs.version.outputs.sha }}
 
@@ -112,11 +126,18 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.sha }}
 
-      - name: Ensure client_secret.json exists
+      - name: Write the OAuth client file
         shell: bash
+        env:
+          GOOGLE_CLIENT_SECRET_JSON: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}
         run: |
-          if [ ! -f client_secret.json ] && [ -n "${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}" ]; then
-            echo '${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}' > client_secret.json
+          # include_bytes! needs it; the repository does not carry it
+          if [ ! -f client_secret.json ]; then
+            if [ -z "$GOOGLE_CLIENT_SECRET_JSON" ]; then
+              echo "::error::The GOOGLE_CLIENT_SECRET_JSON secret is missing"
+              exit 1
+            fi
+            printf '%s' "$GOOGLE_CLIENT_SECRET_JSON" > client_secret.json
           fi
 
       - name: Install Rust
