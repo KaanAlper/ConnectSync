@@ -39,9 +39,21 @@ Uygulamayı derlemek, sisteminize kurmak ve `.desktop` dosyasını oluşturmak i
 curl -sL https://raw.githubusercontent.com/kaanalper/ConnectSync/main/install.sh | bash
 ```
 
-### Windows İçin
+### Windows İçin Tek Satır Yükleyici
 
-Yakında yerleşik yükleyici `.exe` olarak yayınlanacaktır.
+PowerShell'e yapıştır (yönetici izni gerekmez):
+
+```powershell
+irm https://raw.githubusercontent.com/KaanAlper/ConnectSync/main/install.ps1 | iex
+```
+
+Son sürümün kurulum programını (`ConnectSync-Windows-Setup.exe`) indirir, SHA-256'sını doğrular ve sessizce kullanıcı başına `%LOCALAPPDATA%\Programs\ConnectSync` içine kurar; Başlat menüsü kısayolu ve **Ayarlar > Uygulamalar** kaydı (kaldırıcıyla) eklenir. Aynı komut güncelleme yapar. İstersen kurulum programını ya da taşınabilir `ConnectSync-Windows-Portable.exe`'yi [son sürümden](https://github.com/KaanAlper/ConnectSync/releases/latest) elle de indirebilirsin.
+
+Kaldırmak için Ayarlar > Uygulamalar > ConnectSync, ya da:
+
+```powershell
+$env:CONNECTSYNC_UNINSTALL = 1; irm https://raw.githubusercontent.com/KaanAlper/ConnectSync/main/install.ps1 | iex
+```
 
 ## 💻 Geliştirme (Build)
 
@@ -54,6 +66,8 @@ cargo build --release
 ```
 
 Derlenen dosya `target/release/connect_sync` (Windows'ta `connect_sync.exe`) dizininde olacaktır.
+
+Her push'ta `.github/workflows/build.yml` Linux ve Windows derlemesini, NSIS kurulum programını ve `install.ps1`'in kur / kaldır denemesini çalıştırır. Sürüm yayımlamak için **Actions > Release > Run workflow**: sürüm, son sürümden bu yana gelen commit'lerden hesaplanır (`feat:` → minor, `fix:` → patch, tipten sonra `!` ya da `BREAKING CHANGE:` → major; `bump` ile elle seçilebilir).
 
 ## 🛠 Kullanılan Teknolojiler
 
