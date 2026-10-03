@@ -178,9 +178,32 @@ jobs:
           path: dist/*
           retention-days: 3
 
+  build-setup:
+    name: Setup app (x64 / x86)
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+
+      - name: Build the windowed setup app
+        shell: pwsh
+        run: ./installer/gui/build.ps1 -Out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-setup
+          path: |
+            dist/ConnectSync-Setup-x64.exe
+            dist/ConnectSync-Setup-x64.exe.sha256
+            dist/ConnectSync-Setup-x86.exe
+            dist/ConnectSync-Setup-x86.exe.sha256
+          retention-days: 3
+
   publish:
     name: Publish
-    needs: [version, build-linux, build-windows]
+    needs: [version, build-linux, build-windows, build-setup]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -203,6 +226,10 @@ jobs:
             dist/ConnectSync-Windows-Setup.exe.sha256
             dist/ConnectSync-Windows-Portable.exe
             dist/ConnectSync-Windows-Portable.exe.sha256
+            dist/ConnectSync-Setup-x64.exe
+            dist/ConnectSync-Setup-x64.exe.sha256
+            dist/ConnectSync-Setup-x86.exe
+            dist/ConnectSync-Setup-x86.exe.sha256
           fail_on_unmatched_files: true
           generate_release_notes: true
           draft: false

@@ -47,6 +47,8 @@ PowerShell'e yapıştır (yönetici izni gerekmez):
 irm https://raw.githubusercontent.com/KaanAlper/ConnectSync/main/install.ps1 | iex
 ```
 
+**Pencereli kurulum:** [**ConnectSync-Setup-x64.exe**](https://github.com/KaanAlper/ConnectSync/releases/latest/download/ConnectSync-Setup-x64.exe) (32-bit Windows için [ConnectSync-Setup-x86.exe](https://github.com/KaanAlper/ConnectSync/releases/latest/download/ConnectSync-Setup-x86.exe)) — aynı kurulumu düğmelerle yapar: dil seçimi, ilerleme, iptal edince geri alma; kuruluysa **Güncelle / Onar / Kaldır** sunar.
+
 Son sürümün kurulum programını (`ConnectSync-Windows-Setup.exe`) indirir, SHA-256'sını doğrular ve sessizce kullanıcı başına `%LOCALAPPDATA%\Programs\ConnectSync` içine kurar; Başlat menüsü kısayolu ve **Ayarlar > Uygulamalar** kaydı (kaldırıcıyla) eklenir. Aynı komut güncelleme yapar. İstersen kurulum programını ya da taşınabilir `ConnectSync-Windows-Portable.exe`'yi [son sürümden](https://github.com/KaanAlper/ConnectSync/releases/latest) elle de indirebilirsin.
 
 Kaldırmak için Ayarlar > Uygulamalar > ConnectSync, ya da:
