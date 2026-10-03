@@ -78,9 +78,11 @@ LangString SecDesktopName ${LANG_SIMPCHINESE} "桌面快捷方式"
 LangString SecDesktopName ${LANG_KOREAN} "바탕 화면 바로 가기"
 LangString SecDesktopName ${LANG_JAPANESE} "デスクトップ ショートカット"
 
-# Dil secici diyalog
+# Dil secici diyalog (sessiz kurulumda (/S, install.ps1) sorulmaz)
 Function .onInit
+  IfSilent skiplang
   !insertmacro MUI_LANGDLL_DISPLAY
+  skiplang:
 FunctionEnd
 
 
