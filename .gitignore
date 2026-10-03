@@ -1,1 +1,4 @@
 /target
+
+# Google OAuth client (desktop): CI writes it from the GOOGLE_CLIENT_SECRET_JSON secret; keep a local copy to build
+client_secret.json
